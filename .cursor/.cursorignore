@@ -1,0 +1,12 @@
+# Игнорируемые файлы и папки
+node_modules/
+__pycache__/
+*.pyc
+*.log
+.env
+.DS_Store
+build/
+dist/
+*.xcworkspace
+Pods/
+DerivedData/

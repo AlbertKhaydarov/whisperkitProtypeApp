@@ -1,0 +1,16 @@
+{
+  "$schema": "https://raw.githubusercontent.com/getcursor/cursor/main/schemas/config-schema.json",
+  "defaultModel": "claude-3.7-sonnet",
+  "contextLength": 16000,
+  "rulesFiles": [
+    "rules.json"
+  ],
+  "languages": {
+    "python": {
+      "rulesFiles": ["rules.json", "rules_python.json"]
+    },
+    "swift": {
+      "rulesFiles": ["rules.json", "rules_swift.json"]
+    }
+  }
+}
