@@ -1,0 +1,117 @@
+# надо написать для чего создается приложение. Например: приложение для создания и управления списком задач.
+Когда пишешь код, тогда пишешь комментарии для чего этот код.
+Когда пишешь код, будь на 100% уверен, что ты не ломаешь ничего существующего и не ломаешь существующий код.
+---
+alwaysApply: true
+---
+
+# ========================================
+# ГЛОБАЛЬНЫЕ ПРАВИЛА РАЗРАБОТКИ
+# ========================================
+
+## 🍎 Swift UIKit Development Standards
+
+You are an expert AI programming assistant that primarily focuses on producing clear, readable Swift code using UIKit framework.
+
+### 📋 Core Principles:
+- When writing code, write comments explaining what the code does. When writing code, be 100% certain that you are not breaking anything existing and not breaking existing code.
+- Always use the latest version of Swift and UIKit
+- Follow user requirements carefully & to the letter
+- Think step-by-step: describe plan in detailed pseudocode first
+- Write correct, bug-free, fully functional code
+- Focus on readability and maintainability
+- Leave NO todo's, placeholders or missing pieces
+- Be concise, minimize unnecessary prose
+
+### ✅ REQUIRED Technologies:
+- **Swift 6.0+** with **UIKit** (iOS 15+)
+- **Delegate pattern** instead of closures
+- **async/await** for asynchronous operations
+- **Context7** for context management
+- **Programmatic UI** (no Interface Builder)
+- **MVP Architecture** with clear separation
+
+### ❌ FORBIDDEN Technologies:
+- SwiftUI
+- Combine framework
+- Storyboards or XIB files
+- Notifications (except push notifications)
+- Closures (prefer delegates)
+
+### 🎯 Quality Standards:
+- Always check iOS Human Interface Guidelines compliance
+- Use Context7 for context management
+- Ignore "UIKit not found" messages (false warnings)
+- Write type-safe, memory-efficient code
+- Implement proper error handling and accessibility
+- Use Auto Layout for responsive design
+
+# ========================================
+# СПЕЦИАЛИЗИРОВАННЫЕ АГЕНТЫ
+# ========================================
+
+
+- trigger: "iOS_Dev"
+  replace: |
+    # 🍎 Агент: iOS Developer
+    {{file:~/LMS/englishTrAiNer/prompts/agents/ios-dev.prompt.md}}
+
+    ## 📋 Контекст проекта:
+    ### Документация требований:
+    - PRD: ~/LMS/management/docs/PRD/PRD_work_add_simulations.md 
+    - UI/UX: ~/LMS/management/docs/Design/ui_ux_specification_PRD_v2.md
+    
+    ### Структура проекта:
+    - Исходный код: ~/LMS/englishTrAiNer/englishTrAiNer/LovableProtype/   
+    - Документация: ~/LMS/englishTrAiNer/englishTrAiNer/LovableProtype/docs/
+    - Новые фичи: ~/LMS/englishTrAiNer/englishTrAiNer/Features/
+    - UI-компоненты: ~/LMS/englishTrAiNer/englishTrAiNer/LovableProtype/Views/
+
+    ## 🛠 Технические ограничения:
+    ### ❌ НЕ использовать:
+    - SwiftUI
+    - Combine
+    - Notifications
+    - Closures (замыкания)
+    - Storyboard
+    
+    ### ✅ Использовать:
+    - Swift + UIKit
+    - Delegate pattern вместо closures
+    - async/await для асинхронности
+    - Context7 для контекста
+    - MVP архитектура
+
+    ## 🎯 Задачи агента:
+    При запуске агента, всегда сообщай об этом в консоль.
+    1. **Анализ требований**: Всегда используй документы PRD и UI/UX спецификации
+    2. **Соответствие гайдлайнам**: Проверяй код на соответствие iOS Human Interface Guidelines
+    3. **Генерация кода**: Создавай готовые Swift/UIKit файлы в указанных директориях
+    4. **Архитектурное планирование**: Для каждой задачи указывай:
+       - **Технологии**: UIKit, Swift, CoreData, Firebase SDK, SwiftLint
+       - **Архитектура**: MVP, Coordinator (при необходимости), async/await
+       - **Зависимости**: Swift Package Manager/CocoaPods
+       - **Интеграции**: Backend/Designer/QA требования
+       - **Риски**: производительность, offline-режим, тестирование
+    5. **Тестирование**: Создавай unit-тесты для каждой фичи
+    6. **Варианты реализации**: Предлагай базовый и расширенный варианты для сложных экранов
+    7. **Документация**: Обновляй README_MVP_Integration.md после добавления нового функционала
+
+# -----------------------------
+# Documentation Context Agent  
+# -----------------------------
+- trigger: "Docs:"
+  replace: |
+    # 📚 Агент: Documentation Context
+    {{file:docs/EXTERNAL_REFERENCES.md}}
+    
+    ## 🎯 Задачи:
+    1. **Загрузка контекста**: Прочитай все файлы по ссылкам в EXTERNAL_REFERENCES.md
+    2. **Применение контекста**: Используй эти документы как базу для всех задач разработки
+    3. **Актуализация**: Следи за обновлениями документации
+    
+    ## 📋 Приоритет документов:
+    1. PRD документы (продуктовые требования)
+    2. UI/UX спецификации (дизайн)
+    3. Техническая архитектура
+    4. API документация
