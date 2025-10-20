@@ -136,3 +136,80 @@
 - ✅ Delegate pattern for progress reporting
 - ✅ Multiple model support (tiny, base, small)
 - ✅ Performance analytics and optimization recommendations
+
+## 🔧 Actor Isolation Fix - 20.10.2025
+
+### Problem Resolved
+- **Issue:** NotificationCenter observers causing actor isolation errors in AudioRecordingManager
+- **Error Messages:**
+  - `Actor-isolated property 'interruptionObserver' can not be mutated from a nonisolated context`
+  - `Actor-isolated property 'routeChangeObserver' can not be referenced from a nonisolated context`
+
+### Solution Implemented
+- **Approach:** Replaced NotificationCenter with async/await monitoring pattern
+- **Key Changes:**
+  - Removed `interruptionObserver` and `routeChangeObserver` properties
+  - Added `isRecording` flag and `audioSessionTask` for monitoring
+  - Implemented async monitoring with `monitorAudioSession()` method
+  - Created centralized state checking with `checkAudioSessionState()` method
+  - Updated recording lifecycle to properly manage monitoring
+
+### Files Modified
+- **AudioRecordingManager.swift:** Complete refactor of audio session monitoring
+  - Removed NotificationCenter dependencies
+  - Added async/await monitoring pattern
+  - Implemented proper actor isolation
+  - Added recording state management
+
+### Result
+- ✅ **Build Status:** Successful compilation
+- ✅ **Actor Isolation:** All errors resolved
+- ✅ **Functionality:** Audio session monitoring preserved
+- ✅ **Performance:** Improved with async/await pattern
+- ✅ **Maintainability:** Cleaner, more modern code structure
+
+### Technical Details
+- **Monitoring Frequency:** 100ms intervals
+- **State Management:** Centralized with `isRecording` flag
+- **Error Handling:** Proper task cancellation and cleanup
+- **Memory Management:** Automatic cleanup on deinit
+- **Thread Safety:** Full actor isolation compliance
+
+## 🔧 WhisperKitManager Actor Integration - 20.10.2025
+
+### Problem Resolved
+- **Issue:** WhisperKitManager needed updates to work with actor-based AudioRecordingManager
+- **Error Messages:** Method signature mismatches and missing async/await patterns
+
+### Solution Implemented
+- **Approach:** Updated all methods to use async/await for actor communication
+- **Key Changes:**
+  - Updated `startRealtimeTranscription()` to use `await` for actor calls
+  - Updated `stopTranscription()` to use `await audioRecordingManager?.stopRecordingAsync()`
+  - Added `isRecording()` async method for recording status
+  - Added `getRecordingStatus()` async method for detailed status
+  - Updated `unloadModels()` to properly stop recording before unloading
+  - Added `reset()` method for complete state reset
+  - Fixed error handling to use correct `errorHandler.handle()` method
+  - Removed unreachable catch blocks
+
+### Files Modified
+- **WhisperKitManager.swift:** Complete integration with actor-based AudioRecordingManager
+  - Updated method signatures for async/await compatibility
+  - Added proper error handling with ErrorHandler
+  - Implemented recording status methods
+  - Added state management and cleanup methods
+
+### Result
+- ✅ **Build Status:** Successful compilation
+- ✅ **Actor Integration:** Full compatibility with AudioRecordingManager actor
+- ✅ **Error Handling:** Proper error propagation and handling
+- ✅ **State Management:** Complete lifecycle management
+- ✅ **Thread Safety:** Full async/await compliance
+
+### Technical Details
+- **Async Methods:** All actor interactions use proper async/await
+- **Error Handling:** Centralized error handling with ErrorHandler
+- **State Management:** Proper recording state tracking
+- **Lifecycle Management:** Complete cleanup and reset functionality
+- **Thread Safety:** Full compliance with Swift concurrency model
