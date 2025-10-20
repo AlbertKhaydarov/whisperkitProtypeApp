@@ -49,7 +49,7 @@ class ErrorHandler {
     /// Показать алерт с ошибкой
     /// Show error alert
     private func showErrorAlert(_ error: WhisperKitError) {
-        DispatchQueue.main.async { [weak self] in
+        Task { @MainActor [weak self] in
             guard let viewController = self?.viewController else { return }
             
             let alert = UIAlertController(

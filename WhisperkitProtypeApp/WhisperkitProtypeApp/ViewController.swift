@@ -77,6 +77,7 @@ class ViewController: UIViewController {
     private let errorHandler = ErrorHandler()
     private let languageDetector = LanguageDetector()
     private var isRecording = false
+    private var confirmedText: String = "" // Хранит финальный подтвержденный текст
     
     // MARK: - Lifecycle
     override func viewDidLoad() {
@@ -194,9 +195,11 @@ class ViewController: UIViewController {
         statusLabel.text = "Recording..."
         statusLabel.textColor = .systemRed
         
-        // Очищаем промежуточный текст при новой записи
-        intermediateLabel.text = ""
-        intermediateLabel.alpha = 1.0
+        // Очищаем все тексты при новой записи
+        intermediateLabel.text = "🎤 Говорите..."
+        intermediateLabel.alpha = 0.7
+        finalTextView.text = ""
+        confirmedText = ""
         
         // Принудительно обновляем кнопку
         recordButton.setNeedsLayout()
@@ -286,79 +289,44 @@ class ViewController: UIViewController {
 extension ViewController: TranscriptionDelegate {
     func didReceiveIntermediateResult(_ text: String) {
         print("📱 didReceiveIntermediateResult вызван с текстом: '\(text)'")
-        
-        // Обновляем промежуточный результат в finalTextView
-        let currentText = finalTextView.text ?? ""
-        
-        if currentText.isEmpty {
-            // Если текст пустой, создаем новую запись с временной меткой
-            let timestamp = Date().formatted(date: .omitted, time: .shortened)
-            finalTextView.text = "[\(timestamp)] \(text)..."
-        } else {
-            // Если текст уже есть, обновляем последнюю строку
-            var lines = currentText.components(separatedBy: .newlines)
-            let lastLineIndex = lines.count - 1
-            
-            if lastLineIndex >= 0 {
-                // Проверяем, является ли последняя строка промежуточным результатом
-                let lastLine = lines[lastLineIndex]
-                if lastLine.contains("...") {
-                    // Заменяем последнюю строку новым промежуточным результатом
-                    let timestamp = lastLine.components(separatedBy: "] ").first ?? ""
-                    lines[lastLineIndex] = "\(timestamp)] \(text)..."
-                } else {
-                    // Добавляем новую строку с промежуточным результатом
-                    let timestamp = Date().formatted(date: .omitted, time: .shortened)
-                    lines.append("[\(timestamp)] \(text)...")
-                }
-                finalTextView.text = lines.joined(separator: "\n")
-            }
-        }
-        
-        // Показываем статус в intermediateLabel
-        intermediateLabel.text = "Распознавание..."
+
+        // Показываем промежуточный результат в intermediateLabel
+        intermediateLabel.text = text
         intermediateLabel.alpha = 0.7
-        
+
+        // Показываем полный текст (подтвержденный + промежуточный) в finalTextView
+        let fullText = confirmedText.isEmpty ? text : confirmedText + " " + text
+        finalTextView.text = fullText
+
         // Scroll to bottom
-        let bottom = NSRange(location: finalTextView.text.count - 1, length: 1)
-        finalTextView.scrollRangeToVisible(bottom)
+        if finalTextView.text.count > 0 {
+            let bottom = NSRange(location: finalTextView.text.count - 1, length: 1)
+            finalTextView.scrollRangeToVisible(bottom)
+        }
     }
     
     func didReceiveFinalResult(_ text: String) {
         print("📱 didReceiveFinalResult вызван с текстом: '\(text)'")
-        
-        // Заменяем последний промежуточный результат на финальный
-        let currentText = finalTextView.text ?? ""
-        
-        if currentText.isEmpty {
-            // Если текст пустой, создаем новую запись с временной меткой
-            let timestamp = Date().formatted(date: .omitted, time: .shortened)
-            finalTextView.text = "[\(timestamp)] \(text)"
+
+        // Добавляем финальный результат к подтвержденному тексту
+        if confirmedText.isEmpty {
+            confirmedText = text
         } else {
-            // Заменяем последнюю строку с промежуточным результатом на финальный
-            var lines = currentText.components(separatedBy: .newlines)
-            let lastLineIndex = lines.count - 1
-            
-            if lastLineIndex >= 0 {
-                let lastLine = lines[lastLineIndex]
-                if lastLine.contains("...") {
-                    // Заменяем промежуточный результат на финальный
-                    let timestamp = lastLine.components(separatedBy: "] ").first ?? ""
-                    lines[lastLineIndex] = "\(timestamp)] \(text)"
-                } else {
-                    // Добавляем новую строку с финальным результатом
-                    let timestamp = Date().formatted(date: .omitted, time: .shortened)
-                    lines.append("[\(timestamp)] \(text)")
-                }
-                finalTextView.text = lines.joined(separator: "\n")
-            }
+            confirmedText = confirmedText + " " + text
         }
-        
-        intermediateLabel.text = ""
-        
+
+        // Обновляем finalTextView с финальным текстом
+        finalTextView.text = confirmedText
+
+        // Очищаем промежуточный статус
+        intermediateLabel.text = "✅ Распознано"
+        intermediateLabel.alpha = 1.0
+
         // Scroll to bottom
-        let bottom = NSRange(location: finalTextView.text.count - 1, length: 1)
-        finalTextView.scrollRangeToVisible(bottom)
+        if finalTextView.text.count > 0 {
+            let bottom = NSRange(location: finalTextView.text.count - 1, length: 1)
+            finalTextView.scrollRangeToVisible(bottom)
+        }
     }
     
     func didUpdateProgress(_ progress: Float) {

@@ -40,23 +40,31 @@ class WhisperKitManager {
             return
         }
         
-        try await retryManager.retry { [self] in
-            // 1. Скачать модель если нужно
-            // 1. Download model if needed
-            print("📥 Downloading model if needed...")
-            try await modelDownloadManager.downloadModelIfNeeded()
-            
-            // 2. Настроить конфигурацию
-            // 2. Setup configuration
-            let config = createConfig()
-            
-            // 3. Инициализировать WhisperKit
-            // 3. Initialize WhisperKit
-            print("🚀 Initializing WhisperKit...")
-            self.whisperKit = try await WhisperKit(config)
-            
-            self.isInitialized = true
-            print("✅ WhisperKit initialized successfully")
+        do {
+            try await retryManager.retry { [self] in
+                // 1. Скачать модель если нужно
+                // 1. Download model if needed
+                print("📥 Downloading model if needed...")
+                try await modelDownloadManager.downloadModelIfNeeded()
+                
+                // 2. Настроить конфигурацию
+                // 2. Setup configuration
+                let config = createConfig()
+                
+                // 3. Инициализировать WhisperKit
+                // 3. Initialize WhisperKit
+                print("🚀 Initializing WhisperKit...")
+                self.whisperKit = try await WhisperKit(config)
+                
+                self.isInitialized = true
+                print("✅ WhisperKit initialized successfully")
+            }
+        } catch {
+            // Обрабатываем ошибки инициализации
+            // Handle initialization errors
+            print("❌ Failed to initialize WhisperKit: \(error)")
+            errorHandler.handle(error)
+            throw error
         }
     }
     
@@ -64,32 +72,50 @@ class WhisperKitManager {
     /// Start real-time transcription
     func startRealtimeTranscription(delegate: TranscriptionDelegate) async throws {
         guard isInitialized, let whisperKit = whisperKit else {
-            throw WhisperKitError.notInitialized
+            let error = WhisperKitError.notInitialized
+            errorHandler.handle(error)
+            throw error
         }
         
-        // Создать audio recording manager если нет
-        // Create audio recording manager if not exists
-        if audioRecordingManager == nil {
-            audioRecordingManager = AudioRecordingManager()
+        do {
+            // Создать audio recording manager если нет
+            // Create audio recording manager if not exists
+            if audioRecordingManager == nil {
+                audioRecordingManager = AudioRecordingManager()
+            }
+            
+            // Настроить decoding options
+            // Setup decoding options
+            let decodingOptions = createDecodingOptions(delegate: delegate)
+            
+            // Начать запись (теперь с await для actor)
+            // Start recording (now with await for actor)
+            try await audioRecordingManager?.startRecording(
+                whisperKit: whisperKit,
+                decodingOptions: decodingOptions,
+                delegate: delegate
+            )
+            
+            print("🎤 Real-time transcription started successfully")
+        } catch {
+            print("❌ Failed to start transcription: \(error)")
+            errorHandler.handle(error)
+            throw error
         }
-        
-        // Настроить decoding options
-        // Setup decoding options
-        let decodingOptions = createDecodingOptions(delegate: delegate)
-        
-        // Начать запись
-        // Start recording
-        try await audioRecordingManager?.startRecording(
-            whisperKit: whisperKit,
-            decodingOptions: decodingOptions,
-            delegate: delegate
-        )
     }
     
     /// Остановить транскрипцию
     /// Stop transcription
     func stopTranscription() async {
-        audioRecordingManager?.stopRecording()
+        guard let audioRecordingManager = audioRecordingManager else {
+            print("⚠️ No active recording to stop")
+            return
+        }
+        
+        // Останавливаем запись асинхронно через actor
+        // Stop recording asynchronously through actor
+        await audioRecordingManager.stopRecording()
+        print("🛑 Transcription stopped successfully")
     }
     
     /// Проверить готовность
@@ -98,12 +124,45 @@ class WhisperKitManager {
         return isInitialized && whisperKit != nil
     }
     
+    /// Проверить, активна ли запись
+    /// Check if recording is active
+    func isRecording() async -> Bool {
+        // Проверяем, существует ли audioRecordingManager
+        // Check if audioRecordingManager exists
+        return audioRecordingManager != nil
+    }
+    
+    /// Получить статус записи от AudioRecordingManager
+    /// Get recording status from AudioRecordingManager
+    func getRecordingStatus() async -> (isRecording: Bool, hasError: Bool) {
+        // В будущем можно добавить метод в AudioRecordingManager для получения статуса
+        // In the future, we can add a method in AudioRecordingManager to get status
+        // Пока возвращаем упрощенную информацию
+        // For now, return simplified information
+        return (audioRecordingManager != nil, false)
+    }
+    
     /// Выгрузить модель (для экономии памяти)
     /// Unload model (for memory saving)
     func unloadModels() async {
+        // Сначала останавливаем запись если активна
+        // First stop recording if active
+        await stopTranscription()
+        
+        // Затем выгружаем модели
+        // Then unload models
         await whisperKit?.unloadModels()
         isInitialized = false
-        print("♻️ Models unloaded")
+        audioRecordingManager = nil
+        print("♻️ Models unloaded and recording stopped")
+    }
+    
+    /// Сбросить состояние менеджера
+    /// Reset manager state
+    func reset() async {
+        await stopTranscription()
+        await unloadModels()
+        print("🔄 WhisperKitManager reset completed")
     }
     
     // MARK: - Private Methods
