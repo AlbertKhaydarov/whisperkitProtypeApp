@@ -6,7 +6,7 @@
 //
 
 import Foundation
-import SwiftWhisper // Импортируем SwiftWhisper для работы с Whisper API
+import WhisperKit // Импортируем WhisperKit для работы с Whisper API
 
 // MARK: - WhisperSegment Model
 struct WhisperSegment {
@@ -17,10 +17,10 @@ struct WhisperSegment {
 
 // MARK: - WhisperConfiguration
 struct WhisperConfiguration {
-    var language: String = "english" // По умолчанию английский
-    var translate: Bool = false      // Не переводить
-    var beamSize: Int = 5            // Размер луча для декодирования
-    var sampleRate: Double = 16000   // Частота дискретизации
+    var language: String = "en" // По умолчанию английский
+    var translate: Bool = false // Не переводить
+    var modelName: String = "tiny.en" // Модель по умолчанию
+    var sampleRate: Double = 16000 // Частота дискретизации
     
     static let defaultConfiguration = WhisperConfiguration()
 }
@@ -41,17 +41,17 @@ actor WhisperKitManager {
     static let shared = WhisperKitManager()
     
     // MARK: - Properties
-    private var whisper: Whisper?
+    private var whisperKit: WhisperKit?
     private var isInitialized = false
     private var isWarmedUp = false
-    private var currentSession: Any? // Placeholder for WhisperSession
+    private var currentSession: String? // ID текущей сессии транскрипции
     private var audioBuffer: [Float] = []
-    private let minBufferSize = 8000 // Минимум 0.5 секунды аудио (16kHz) - уменьшен для более быстрого отклика
+    private let minBufferSize = 8000 // Минимум 0.5 секунды аудио (16kHz)
     private let maxBufferSize = 160000 // Максимум ~10 секунд аудио (16kHz)
     private var isTranscribing = false // Флаг для предотвращения одновременных транскрипций
     
     // MARK: - Configuration
-    private var configuration: WhisperConfiguration = WhisperConfiguration(language: "english", translate: false, beamSize: 5, sampleRate: 16000)
+    private var configuration: WhisperConfiguration = WhisperConfiguration.defaultConfiguration
     
     // MARK: - Delegate
     weak var delegate: WhisperKitManagerDelegate?
@@ -78,98 +78,41 @@ actor WhisperKitManager {
     
     // MARK: - Public Methods
     
-    /// Инициализация SwiftWhisper
-    /// Initialize SwiftWhisper
+    /// Инициализация WhisperKit
+    /// Initialize WhisperKit
     func initialize() async throws {
         guard !isInitialized else {
-            print("⚠️ SwiftWhisper already initialized")
+            print("⚠️ WhisperKit already initialized")
             return
         }
         
-        print("🚀 Initializing SwiftWhisper...")
+        print("🚀 Initializing WhisperKit...")
         
-        // Проверка доступности библиотеки SwiftWhisper
-        // Примечание: в реальной реализации нужно добавить метод проверки доступности
-        // В текущей версии SwiftWhisper такого метода нет, поэтому используем заглушку
-        do {
-            // Проверяем доступность фреймворка
-            let frameworkBundle = Bundle(for: Whisper.self)
-            guard frameworkBundle.isLoaded else {
-                throw WhisperKitError.initializationFailed(NSError(
-                    domain: "WhisperKit",
-                    code: -1,
-                    userInfo: [NSLocalizedDescriptionKey: "SwiftWhisper framework not loaded"]
-                ))
-            }
-            
-            print("✓ SwiftWhisper framework is available")
-            isInitialized = true
-            print("✅ SwiftWhisper initialized successfully")
-        } catch {
-            print("❌ Failed to initialize SwiftWhisper: \(error.localizedDescription)")
-            throw WhisperKitError.initializationFailed(error)
-        }
+        // Инициализируем WhisperKit с конфигурацией
+        let config = WhisperKitConfig(model: configuration.modelName)
+        
+        whisperKit = try await WhisperKit(config)
+        print("✅ WhisperKit initialized successfully")
+        isInitialized = true
     }
     
-    /// Загрузка модели Whisper
-    /// Load Whisper model
-    func loadModel(from url: URL) async throws {
+    /// Загрузка модели Whisper (автоматически через WhisperKit)
+    /// Load Whisper model (automatically through WhisperKit)
+    func loadModel() async throws {
         guard isInitialized else {
             throw WhisperKitError.notInitialized
         }
         
-        print("📥 Loading Whisper model from: \(url.lastPathComponent)")
-        
-        // Проверяем существование файла модели
-        guard FileManager.default.fileExists(atPath: url.path) else {
-            print("❌ Model file not found at path: \(url.path)")
-            throw WhisperKitError.modelFileNotFound
+        guard let whisperKit = whisperKit else {
+            throw WhisperKitError.notInitialized
         }
         
-        // Проверяем размер файла модели
-        do {
-            let fileAttributes = try FileManager.default.attributesOfItem(atPath: url.path)
-            if let fileSize = fileAttributes[.size] as? NSNumber {
-                let sizeInMB = fileSize.doubleValue / (1024 * 1024)
-                print("📊 Model file size: \(String(format: "%.2f", sizeInMB)) MB")
-                
-                // Проверяем минимальный размер файла (обычно модели Whisper весят больше 100MB)
-                if sizeInMB < 10 {
-                    print("⚠️ Warning: Model file seems too small (\(String(format: "%.2f", sizeInMB)) MB)")
-                }
-            }
-        } catch {
-            print("⚠️ Could not get file attributes: \(error.localizedDescription)")
-        }
+        print("📥 Loading Whisper model: \(configuration.modelName)")
         
-        // Загружаем модель из файла с обработкой ошибок
-        do {
-            print("🔄 Attempting to initialize Whisper with file: \(url.lastPathComponent)")
-            
-            // Создаем параметры на основе текущей конфигурации
-            var params = WhisperParams.default
-            
-            // Устанавливаем только английский язык для распознавания
-            params.language = .english
-            print("🌍 Установлен английский язык распознавания")
-            
-            // Устанавливаем другие параметры из конфигурации
-            params.translate = configuration.translate
-            // Предполагаем, что в WhisperParams есть свойство beamSize
-            // params.beamSize = configuration.beamSize
-            
-            print("🌍 Language set to: \(configuration.language)")
-            print("🔄 Translate: \(configuration.translate)")
-            
-            // Инициализируем Whisper с нашими параметрами
-            whisper = try Whisper(fromFileURL: url, withParams: params)
-            print("✅ Model loaded successfully with \(configuration.language) language")
-        } catch {
-            print("❌ Failed to load model: \(error.localizedDescription)")
-            print("❌ Model file path: \(url.path)")
-            print("❌ Model file exists: \(FileManager.default.fileExists(atPath: url.path))")
-            throw WhisperKitError.modelLoadFailed(error)
-        }
+        // WhisperKit автоматически загружает модель при инициализации
+        // Дополнительная проверка не требуется, так как whisperKit уже проверен выше
+        
+        print("✅ Model loaded successfully")
     }
     
     /// Прогрев модели
@@ -179,34 +122,54 @@ actor WhisperKitManager {
             throw WhisperKitError.notInitialized
         }
         
-        guard let whisper = whisper else {
+        guard let whisperKit = whisperKit else {
             throw WhisperKitError.modelNotLoaded
         }
         
         guard !isWarmedUp else {
             print("⚠️ Model already warmed up")
+            // Даже если модель уже прогрета, отправляем сигнал о 100% прогреве
+            notifyDelegate { delegate in
+                delegate.whisperKitManager(self, didUpdateWarmupProgress: 1.0)
+            }
             return
         }
         
         print("🔥 Warming up model...")
         
-        // Прогреваем модель с реальными данными (1 секунда синусоидального сигнала)
-        // Используем синусоидальный сигнал вместо тишины для лучшего прогрева
+        // Отправляем начальный прогресс прогрева
+        notifyDelegate { delegate in
+            delegate.whisperKitManager(self, didUpdateWarmupProgress: 0.1)
+        }
+        
+        // Создаем тестовые аудио данные для прогрева
         var warmupData = [Float](repeating: 0.0, count: 16000) // 1 секунда аудио
         for i in 0..<16000 {
-            // Создаем синусоидальный сигнал частотой 440 Гц (нота ля первой октавы)
+            // Создаем синусоидальный сигнал частотой 440 Гц
             warmupData[i] = sin(2.0 * Float.pi * 440.0 * Float(i) / 16000.0) * 0.5
         }
-        print("🔥 Warming up with English language detection...")
-        _ = try await whisper.transcribe(audioFrames: warmupData)
         
-        // Отправляем прогресс прогрева через безопасный метод
+        // Отправляем промежуточный прогресс прогрева
         notifyDelegate { delegate in
-            delegate.whisperKitManager(self, didUpdateWarmupProgress: 1.0)
+            delegate.whisperKitManager(self, didUpdateWarmupProgress: 0.5)
         }
         
-        isWarmedUp = true
-        print("✅ Model warmed up successfully")
+        // Прогреваем модель
+        do {
+            _ = try await whisperKit.transcribe(audioArray: warmupData)
+            print("🔥 Model warmed up with test transcription")
+            
+            // Отправляем финальный прогресс прогрева
+            notifyDelegate { delegate in
+                delegate.whisperKitManager(self, didUpdateWarmupProgress: 1.0)
+            }
+            
+            isWarmedUp = true
+            print("✅ Model warmed up successfully")
+        } catch {
+            print("❌ Failed to warm up model: \(error.localizedDescription)")
+            throw WhisperKitError.modelLoadFailed(error)
+        }
     }
     
     /// Транскрипция аудио фреймов
@@ -217,8 +180,8 @@ actor WhisperKitManager {
             throw WhisperKitError.notReady
         }
         
-        guard let whisper = whisper else {
-            print("❌ Модель Whisper не загружена")
+        guard let whisperKit = whisperKit else {
+            print("❌ WhisperKit не инициализирован")
             throw WhisperKitError.modelNotLoaded
         }
         
@@ -273,52 +236,33 @@ actor WhisperKitManager {
         do {
             isTranscribing = true
             
-            // Выполняем реальную транскрипцию с SwiftWhisper с измерением времени
-            print("🔄 Starting transcription with English language...")
+            // Выполняем транскрипцию с WhisperKit
+            print("🔄 Starting transcription with WhisperKit...")
             
             let startTime = Date()
-            let segments = try await whisper.transcribe(audioFrames: framesToProcess)
+            let result = try await whisperKit.transcribe(audioArray: framesToProcess)
             let processingTime = Date().timeIntervalSince(startTime)
             
             // Сохраняем метрики времени обработки
             processingTimes.append(processingTime)
             print("⏱️ Processing time: \(String(format: "%.2f", processingTime))s (avg: \(String(format: "%.2f", averageProcessingTime))s)")
             
-            // Конвертируем в наш формат
-            // Проверяем, не пустой ли результат
+            // Конвертируем результат в наш формат
             var whisperSegments: [WhisperSegment] = []
             
-            if segments.isEmpty {
-                // Если распознавание не дало результатов, логируем это
-                print("⚠️ Empty segments received from SwiftWhisper")
-                // Возвращаем пустой массив вместо моковых данных
-                whisperSegments = []
+            if let firstResult = result.first, !firstResult.text.isEmpty {
+                // Создаем один сегмент с полным текстом
+                let segment = WhisperSegment(
+                    text: firstResult.text,
+                    start: 0.0,
+                    end: Double(framesToProcess.count) / 16000.0
+                )
+                whisperSegments = [segment]
                 
-                // Проверяем амплитуду аудио для диагностики
-                let maxAmplitude = framesToProcess.map { abs($0) }.max() ?? 0
-                print("📊 Диагностика: максимальная амплитуда аудио: \(maxAmplitude)")
-                
-                if maxAmplitude < 0.01 {
-                    print("⚠️ Возможная причина: слишком тихий звук (амплитуда < 0.01)")
-                } else if maxAmplitude > 0.9 {
-                    print("⚠️ Возможная причина: слишком громкий звук (амплитуда > 0.9)")
-                }
+                print("✅ Успешно распознано: '\(firstResult.text)'")
             } else {
-                // Обычная конвертация сегментов
-                whisperSegments = segments.map { segment in
-                    // Проверяем доступность свойств в сегменте
-                    let text = segment.text ?? "Нет текста"
-                    let start = segment.startTime != nil ? Double(segment.startTime) : 0.0
-                    let end = segment.endTime != nil ? Double(segment.endTime) : 1.0
-                    
-                    return WhisperSegment(
-                        text: text,
-                        start: start,
-                        end: end
-                    )
-                }
-                
-                print("✅ Успешно распознано \(whisperSegments.count) сегментов речи")
+                print("⚠️ Empty transcription result")
+                whisperSegments = []
             }
             
             // Отправляем результат через делегат безопасно
@@ -370,7 +314,7 @@ actor WhisperKitManager {
             throw WhisperKitError.notReady
         }
         
-        // Ждем завершения текущей транскрипции с использованием continuation
+        // Ждем завершения текущей транскрипции
         if isTranscribing {
             print("⏳ Waiting for current transcription to complete...")
             try await withCheckedThrowingContinuation { continuation in
@@ -402,54 +346,30 @@ actor WhisperKitManager {
             do {
                 isTranscribing = true
                 
-                // Убеждаемся, что whisper не nil
-                guard let whisper = whisper else {
+                guard let whisperKit = whisperKit else {
                     throw WhisperKitError.modelNotLoaded
                 }
                 
                 let startTime = Date()
-                let segments = try await whisper.transcribe(audioFrames: audioBuffer)
+                let result = try await whisperKit.transcribe(audioArray: audioBuffer)
                 let processingTime = Date().timeIntervalSince(startTime)
                 
                 // Сохраняем метрики времени обработки
                 processingTimes.append(processingTime)
                 print("⏱️ Final processing time: \(String(format: "%.2f", processingTime))s")
                 
-                // Конвертируем в наш формат с проверкой на пустой результат
-                if segments.isEmpty {
-                    // Если распознавание не дало результатов, логируем это
-                    print("⚠️ Empty segments received in finalize")
-                    
-                    // Возвращаем пустой массив вместо моковых данных
-                    finalSegments = []
-                    
-                    // Проверяем амплитуду аудио для диагностики
-                    if !audioBuffer.isEmpty {
-                        let maxAmplitude = audioBuffer.map { abs($0) }.max() ?? 0
-                        print("📊 Финальная диагностика: максимальная амплитуда аудио: \(maxAmplitude)")
-                        
-                        if maxAmplitude < 0.01 {
-                            print("⚠️ Возможная причина: слишком тихий звук (амплитуда < 0.01)")
-                        } else if maxAmplitude > 0.9 {
-                            print("⚠️ Возможная причина: слишком громкий звук (амплитуда > 0.9)")
-                        }
-                    }
+                // Конвертируем результат в наш формат
+                if let firstResult = result.first, !firstResult.text.isEmpty {
+                    let segment = WhisperSegment(
+                        text: firstResult.text,
+                        start: 0.0,
+                        end: Double(audioBuffer.count) / 16000.0
+                    )
+                    finalSegments = [segment]
+                    print("✅ Финальное распознавание завершено: '\(firstResult.text)'")
                 } else {
-                    // Обычная конвертация сегментов
-                    finalSegments = segments.map { segment in
-                        // Проверяем доступность свойств в сегменте
-                        let text = segment.text ?? "Нет текста"
-                        let start = segment.startTime != nil ? Double(segment.startTime) : 0.0
-                        let end = segment.endTime != nil ? Double(segment.endTime) : 1.0
-                        
-                        return WhisperSegment(
-                            text: text,
-                            start: start,
-                            end: end
-                        )
-                    }
-                    
-                    print("✅ Финальное распознавание завершено: \(finalSegments.count) сегментов")
+                    print("⚠️ Empty final transcription result")
+                    finalSegments = []
                 }
                 
                 audioBuffer.removeAll()
@@ -496,7 +416,8 @@ actor WhisperKitManager {
             throw WhisperKitError.notReady
         }
         
-        // Создаем новую сессию (SwiftWhisper не имеет createSession, используем placeholder)
+        // Очищаем буфер для новой сессии
+        audioBuffer.removeAll()
         currentSession = "session_\(Date().timeIntervalSince1970)"
         print("🆕 New transcription session started")
     }
@@ -504,12 +425,12 @@ actor WhisperKitManager {
     /// Сброс состояния
     /// Reset state
     func reset() async {
-        whisper = nil
+        whisperKit = nil
         isInitialized = false
         isWarmedUp = false
         currentSession = nil
         audioBuffer.removeAll()
-        print("🔄 SwiftWhisper state reset")
+        print("🔄 WhisperKit state reset")
     }
     
     /// Обновление конфигурации Whisper
@@ -519,7 +440,7 @@ actor WhisperKitManager {
         print("🔄 WhisperKit configuration updated")
         print("🌍 Language: \(configuration.language)")
         print("🔄 Translate: \(configuration.translate)")
-        print("🔢 Beam Size: \(configuration.beamSize)")
+        print("🤖 Model: \(configuration.modelName)")
         print("📊 Sample Rate: \(configuration.sampleRate)Hz")
     }
     

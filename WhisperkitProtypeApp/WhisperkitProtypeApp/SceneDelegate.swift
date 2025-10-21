@@ -24,31 +24,33 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
 
     func sceneDidDisconnect(_ scene: UIScene) {
-        // Called as the scene is being released by the system.
-        // This occurs shortly after the scene enters the background, or when its session is discarded.
-        // Release any resources associated with this scene that can be re-created the next time the scene connects.
-        // The scene may re-connect later, as its session was not necessarily discarded (see `application:didDiscardSceneSessions` instead).
+        // Освобождаем ресурсы при отключении сцены
+        print("📱 Scene disconnected - cleaning up resources")
+        // Обработка отключения сцены будет реализована через делегаты
     }
 
     func sceneDidBecomeActive(_ scene: UIScene) {
-        // Called when the scene has moved from an inactive state to an active state.
-        // Use this method to restart any tasks that were paused (or not yet started) when the scene was inactive.
+        // Восстанавливаем активность приложения
+        print("📱 Scene became active - resuming operations")
+        // Обработка восстановления активности будет реализована через делегаты
     }
 
     func sceneWillResignActive(_ scene: UIScene) {
-        // Called when the scene will move from an active state to an inactive state.
-        // This may occur due to temporary interruptions (ex. an incoming phone call).
+        // Приостанавливаем операции при потере активности
+        print("📱 Scene will resign active - pausing operations")
+        // Обработка приостановки будет реализована через делегаты
     }
 
     func sceneWillEnterForeground(_ scene: UIScene) {
-        // Called as the scene transitions from the background to the foreground.
-        // Use this method to undo the changes made on entering the background.
+        // Восстанавливаем состояние при возврате из background
+        print("📱 Scene will enter foreground - restoring state")
+        // Обработка возврата из background будет реализована через делегаты
     }
 
     func sceneDidEnterBackground(_ scene: UIScene) {
-        // Called as the scene transitions from the foreground to the background.
-        // Use this method to save data, release shared resources, and store enough scene-specific state information
-        // to restore the scene back to its current state.
+        // Сохраняем состояние при переходе в background
+        print("📱 Scene did enter background - saving state")
+        // Обработка перехода в background будет реализована через делегаты
     }
 
 

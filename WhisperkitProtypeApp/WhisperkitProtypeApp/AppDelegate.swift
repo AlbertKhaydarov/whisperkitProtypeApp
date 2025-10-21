@@ -34,12 +34,15 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     // MARK: - Background/Foreground Handling
     
     func applicationDidEnterBackground(_ application: UIApplication) {
-        // Обработать переход в background
-        
+        // Останавливаем аудио запись при переходе в background
+        print("📱 App entered background - stopping audio recording")
+        // Обработка перехода в background будет реализована через делегаты
     }
     
     func applicationWillEnterForeground(_ application: UIApplication) {
-        
+        // Восстанавливаем состояние при возврате из background
+        print("📱 App will enter foreground - checking audio session")
+        // Обработка возврата из background будет реализована через делегаты
     }
 }
 

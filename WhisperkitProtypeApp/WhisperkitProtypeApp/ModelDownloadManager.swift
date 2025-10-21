@@ -7,103 +7,60 @@
 
 import Foundation
 
+#if canImport(WhisperKit)
+import WhisperKit
+#endif
+
 // MARK: - ModelDownloadManager Delegate
 protocol ModelDownloadManagerDelegate: AnyObject {
     func modelDownloadManager(_ manager: ModelDownloadManager, didUpdateProgress progress: Double)
-    func modelDownloadManager(_ manager: ModelDownloadManager, didCompleteDownloadFor modelName: String, at localURL: URL)
+    func modelDownloadManager(_ manager: ModelDownloadManager, didCompleteDownloadFor modelName: String)
     func modelDownloadManager(_ manager: ModelDownloadManager, didFailDownloadFor modelName: String, with error: Error)
 }
 
-/// Менеджер для загрузки и управления моделями Whisper
-/// Manager for downloading and managing Whisper models
+/// Менеджер для управления моделями WhisperKit
+/// Manager for managing WhisperKit models
 class ModelDownloadManager: NSObject {
     
     // MARK: - Properties
-    private let urlSession: URLSession
     private let fileManager: FileManager
-    private var activeDownloads: [String: URLSessionDownloadTask] = [:]
     
     // MARK: - Delegate
     weak var delegate: ModelDownloadManagerDelegate?
     
     // MARK: - Initialization
     override init() {
-        let config = URLSessionConfiguration.default
         self.fileManager = FileManager.default
-        self.urlSession = URLSession(configuration: config, delegate: nil, delegateQueue: nil)
         super.init()
-        // Note: URLSession delegate cannot be set after initialization
-        // We'll need to handle download completion differently
     }
     
     // MARK: - Public Methods
     
-    /// Загрузка модели
-    /// Download model
-    func downloadModel(_ modelName: String) async throws -> URL {
-        guard let modelConfig = getModelConfiguration(modelName) else {
-            throw ModelDownloadError.modelNotFound
-        }
+    /// Проверка доступности модели
+    /// Check model availability
+    func isModelAvailable(_ modelName: String) -> Bool {
+        // WhisperKit автоматически управляет моделями
+        // Проверяем, есть ли модель в кэше WhisperKit
+        let modelsDir = getWhisperKitModelsDirectory()
+        let modelPath = modelsDir.appendingPathComponent("openai_whisper-\(modelName)")
         
-        // Проверяем, есть ли уже локальная копия
-        if let localURL = getLocalModelURL(modelName) {
-            print("📁 Model already exists locally: \(localURL.path)")
-            return localURL
-        }
-        
-        print("📥 Starting download for model: \(modelName)")
-        
-        guard let url = URL(string: modelConfig.downloadURL) else {
-            throw ModelDownloadError.invalidURL
-        }
-        
-        // Используем async/await для загрузки
-        let (localURL, _) = try await urlSession.download(from: url)
-        
-        // Перемещаем файл в нужную директорию
-        let documentsDir = getDocumentsDirectory()
-        let modelsDir = documentsDir.appendingPathComponent("Models")
-        
-        // Создаем директорию Models если не существует
-        if !fileManager.fileExists(atPath: modelsDir.path) {
-            try fileManager.createDirectory(at: modelsDir, withIntermediateDirectories: true)
-        }
-        
-        let destinationURL = modelsDir.appendingPathComponent("\(modelName).zip")
-        
-        // Удаляем существующий файл если есть
-        if fileManager.fileExists(atPath: destinationURL.path) {
-            try fileManager.removeItem(at: destinationURL)
-        }
-        
-        // Перемещаем загруженный файл
-        try fileManager.moveItem(at: localURL, to: destinationURL)
-        
-        // Распаковываем ZIP файл
-        let extractedURL = try await extractModel(from: destinationURL, modelName: modelName)
-        
-        print("✅ Model downloaded and extracted successfully: \(extractedURL.path)")
-        
-        // Уведомляем делегата о завершении загрузки
-        delegate?.modelDownloadManager(self, didCompleteDownloadFor: modelName, at: extractedURL)
-        
-        return extractedURL
+        return fileManager.fileExists(atPath: modelPath.path)
     }
     
     /// Получение локального URL модели
     /// Get local model URL
     func getLocalModelURL(_ modelName: String) -> URL? {
-        let modelsDir = getDocumentsDirectory().appendingPathComponent("Models")
-        let modelFile = modelsDir.appendingPathComponent("ggml-\(modelName).bin")
+        let modelsDir = getWhisperKitModelsDirectory()
+        let modelPath = modelsDir.appendingPathComponent("openai_whisper-\(modelName)")
         
-        // Проверяем существование файла модели
-        guard fileManager.fileExists(atPath: modelFile.path) else { 
-            print("📁 Model file not found: \(modelFile.path)")
+        // Проверяем существование директории модели
+        guard fileManager.fileExists(atPath: modelPath.path) else { 
+            print("📁 Model directory not found: \(modelPath.path)")
             return nil 
         }
         
-        print("📁 Found local model: \(modelFile.path)")
-        return modelFile
+        print("📁 Found local model: \(modelPath.path)")
+        return modelPath
     }
     
     /// Валидация модели
@@ -115,7 +72,7 @@ class ModelDownloadManager: NSObject {
             let attributes = try fileManager.attributesOfItem(atPath: url.path)
             guard let fileSize = attributes[.size] as? Int else { return false }
             
-            // Минимальный размер файла модели (10MB)
+            // Минимальный размер директории модели (10MB)
             return fileSize > 10 * 1024 * 1024
         } catch {
             return false
@@ -136,110 +93,87 @@ class ModelDownloadManager: NSObject {
     /// Получение доступных моделей
     /// Get available models
     func getAvailableModels() -> [String] {
-        // Возвращаем только английские модели с расширением .en
-        return ["tiny.en", "base.en", "small.en"]
+        // Возвращаем модели, поддерживаемые WhisperKit с расширением .en
+        return ["tiny.en", "base.en", "small.en", "medium.en", "large-v3"]
+    }
+    
+    /// Получение рекомендуемой модели для устройства
+    /// Get recommended model for device
+    func getRecommendedModel() -> String {
+        // WhisperKit автоматически выбирает оптимальную модель
+        // Возвращаем базовую модель как fallback
+        return "base.en"
+    }
+    
+    /// Получение размера модели
+    /// Get model size
+    func getModelSize(_ modelName: String) -> Int64 {
+        let modelSizes: [String: Int64] = [
+            "tiny.en": 39 * 1024 * 1024,      // 39 MB
+            "base.en": 74 * 1024 * 1024,      // 74 MB
+            "small.en": 244 * 1024 * 1024,    // 244 MB
+            "medium.en": 769 * 1024 * 1024,   // 769 MB
+            "large-v3": 1550 * 1024 * 1024    // 1.55 GB
+        ]
+        
+        return modelSizes[modelName] ?? 0
+    }
+    
+    /// Получение информации о модели
+    /// Get model information
+    func getModelInfo(_ modelName: String) -> ModelInfo? {
+        guard isModelAvailable(modelName) else { return nil }
+        
+        return ModelInfo(
+            name: modelName,
+            size: getModelSize(modelName),
+            isDownloaded: true,
+            localPath: getLocalModelURL(modelName)?.path
+        )
+    }
+    
+    /// Очистка кэша моделей
+    /// Clear models cache
+    func clearModelsCache() async throws {
+        let modelsDir = getWhisperKitModelsDirectory()
+        
+        if fileManager.fileExists(atPath: modelsDir.path) {
+            try fileManager.removeItem(at: modelsDir)
+            print("🗑️ Models cache cleared")
+        }
     }
     
     // MARK: - Private Methods
     
-    private func getModelConfiguration(_ modelName: String) -> ModelConfiguration? {
-        // Поддерживаем только английские модели с расширением .en
-        let models: [String: ModelConfiguration] = [
-            "tiny.en": ModelConfiguration(
-                name: "tiny.en",
-                size: 77 * 1024 * 1024, // 77.7 MB
-                downloadURL: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin",
-                checksum: "tiny_en_checksum",
-                localPath: "Models/ggml-tiny.en.bin"
-            ),
-            "base.en": ModelConfiguration(
-                name: "base.en",
-                size: 148 * 1024 * 1024, // 148 MB
-                downloadURL: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin",
-                checksum: "base_en_checksum",
-                localPath: "Models/ggml-base.en.bin"
-            ),
-            "small.en": ModelConfiguration(
-                name: "small.en",
-                size: 488 * 1024 * 1024, // 488 MB
-                downloadURL: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin",
-                checksum: "small_en_checksum",
-                localPath: "Models/ggml-small.en.bin"
-            ),
-            "medium.en": ModelConfiguration(
-                name: "medium.en",
-                size: 1530 * 1024 * 1024, // 1.53 GB
-                downloadURL: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.en.bin",
-                checksum: "medium_en_checksum",
-                localPath: "Models/ggml-medium.en.bin"
-            )
-        ]
-        
-        return models[modelName]
+    private func getWhisperKitModelsDirectory() -> URL {
+        // WhisperKit сохраняет модели в Application Support
+        let applicationSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        return applicationSupport.appendingPathComponent("WhisperKit")
     }
     
     private func getDocumentsDirectory() -> URL {
         return fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
     }
-    
-    /// Перемещение скачанного файла модели в правильное место
-    /// Move downloaded model file to correct location
-    private func extractModel(from downloadedURL: URL, modelName: String) async throws -> URL {
-        let documentsDir = getDocumentsDirectory()
-        let modelsDir = documentsDir.appendingPathComponent("Models")
-        let modelFile = modelsDir.appendingPathComponent("ggml-\(modelName).bin")
-        
-        // Создаем директорию Models если не существует
-        if !fileManager.fileExists(atPath: modelsDir.path) {
-            try fileManager.createDirectory(at: modelsDir, withIntermediateDirectories: true)
-        }
-        
-        // Удаляем старый файл модели если существует
-        if fileManager.fileExists(atPath: modelFile.path) {
-            try fileManager.removeItem(at: modelFile)
-        }
-        
-        // Перемещаем скачанный файл в правильное место
-        print("📦 Moving model file: \(downloadedURL.lastPathComponent) -> \(modelFile.lastPathComponent)")
-        
-        do {
-            try fileManager.moveItem(at: downloadedURL, to: modelFile)
-            print("✅ Model file moved successfully")
-        } catch {
-            print("❌ Failed to move model file: \(error.localizedDescription)")
-            throw ModelDownloadError.validationFailed
-        }
-        
-        // Проверяем размер файла модели
-        do {
-            let fileAttributes = try fileManager.attributesOfItem(atPath: modelFile.path)
-            if let fileSize = fileAttributes[.size] as? NSNumber {
-                let sizeInMB = fileSize.doubleValue / (1024 * 1024)
-                print("📊 Model file size: \(String(format: "%.2f", sizeInMB)) MB")
-                
-                // Проверяем минимальный размер файла
-                if sizeInMB < 10 {
-                    print("⚠️ Warning: Model file seems too small (\(String(format: "%.2f", sizeInMB)) MB)")
-                }
-            }
-        } catch {
-            print("⚠️ Could not get model file attributes: \(error.localizedDescription)")
-        }
-        
-        print("📦 Model ready at: \(modelFile.path)")
-        return modelFile
-    }
 }
 
-// MARK: - URLSessionDownloadDelegate (Removed - using async/await instead)
-
-// MARK: - Model Configuration
-struct ModelConfiguration {
+// MARK: - Model Information
+struct ModelInfo {
     let name: String
-    let size: Int
-    let downloadURL: String
-    let checksum: String
-    let localPath: String
+    let size: Int64
+    let isDownloaded: Bool
+    let localPath: String?
+    
+    var sizeInMB: Double {
+        return Double(size) / (1024 * 1024)
+    }
+    
+    var sizeFormatted: String {
+        if sizeInMB < 1024 {
+            return String(format: "%.1f MB", sizeInMB)
+        } else {
+            return String(format: "%.1f GB", sizeInMB / 1024)
+        }
+    }
 }
 
 // MARK: - Model Download Errors
@@ -248,6 +182,7 @@ enum ModelDownloadError: Error, LocalizedError {
     case invalidURL
     case downloadFailed
     case validationFailed
+    case modelNotSupported
     
     var errorDescription: String? {
         switch self {
@@ -259,6 +194,8 @@ enum ModelDownloadError: Error, LocalizedError {
             return "Ошибка загрузки модели"
         case .validationFailed:
             return "Ошибка валидации модели"
+        case .modelNotSupported:
+            return "Модель не поддерживается"
         }
     }
 }

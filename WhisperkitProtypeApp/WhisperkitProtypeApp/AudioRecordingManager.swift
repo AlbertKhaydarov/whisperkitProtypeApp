@@ -7,7 +7,6 @@
 
 import Foundation
 import AVFoundation
-import AudioKit
 
 
 // MARK: - AudioRecordingManager Delegate
@@ -220,225 +219,44 @@ class AudioRecordingManager: NSObject {
             }
         }
         
-        // Конвертация в 16kHz PCM используя AudioKit
-        print("🔄 Начинаем конвертацию аудио через AudioKit...")
-        convertBufferToPCMWithAudioKit(buffer) { [weak self] result in
-            guard let self = self else { return }
+        // Конвертация в 16kHz PCM используя стандартную конвертацию AVFoundation
+        print("🔄 Начинаем конвертацию аудио...")
+        
+        if let convertedFrames = convertBufferTo16kHzPCM(buffer) {
+            print("✅ Успешная конвертация: \(convertedFrames.count) фреймов")
             
-            switch result {
-            case .success(let convertedFrames):
-                print("✅ Успешная конвертация через AudioKit: \(convertedFrames.count) фреймов")
-                
-                // Анализ конвертированных данных
-                if !convertedFrames.isEmpty {
-                    let samplesToPrint = min(5, convertedFrames.count)
-                    var samplesInfo = "Первые \(samplesToPrint) конвертированных сэмплов: "
-                    for i in 0..<samplesToPrint {
-                        samplesInfo += String(format: "%.4f ", convertedFrames[i])
-                    }
-                    print("🎵 \(samplesInfo)")
-                    
-                    let maxAmplitude = convertedFrames.map { abs($0) }.max() ?? 0
-                    print("📊 Максимальная амплитуда после конвертации: \(maxAmplitude)")
+            // Анализ конвертированных данных
+            if !convertedFrames.isEmpty {
+                let samplesToPrint = min(5, convertedFrames.count)
+                var samplesInfo = "Первые \(samplesToPrint) конвертированных сэмплов: "
+                for i in 0..<samplesToPrint {
+                    samplesInfo += String(format: "%.4f ", convertedFrames[i])
                 }
+                print("🎵 \(samplesInfo)")
                 
-                // Отправляем фреймы через delegate
-                DispatchQueue.main.async {
-                    print("📤 Отправляем \(convertedFrames.count) фреймов для распознавания")
-                    self.delegate?.audioRecordingManager(self, didProduceAudioFrames: convertedFrames)
-                }
-            case .failure(let error):
-                print("❌ Ошибка конвертации через AudioKit: \(error.localizedDescription)")
-                print("⚠️ Используем запасной метод конвертации")
-                
-                // Пробуем запасной метод конвертации
-                if let convertedFrames = self.convertBufferTo16kHzPCMFallback(buffer) {
-                    print("✅ Запасной метод успешно конвертировал \(convertedFrames.count) фреймов")
-                    DispatchQueue.main.async {
-                        self.delegate?.audioRecordingManager(self, didProduceAudioFrames: convertedFrames)
-                    }
-                } else {
-                    print("❌ Запасной метод также не смог конвертировать аудио")
-                }
+                let maxAmplitude = convertedFrames.map { abs($0) }.max() ?? 0
+                print("📊 Максимальная амплитуда после конвертации: \(maxAmplitude)")
             }
-        }
-    }
-    
-    /// Конвертация буфера аудио в PCM 16kHz с использованием AudioKit
-    /// Convert audio buffer to 16kHz PCM using AudioKit
-    private func convertBufferToPCMWithAudioKit(_ buffer: AVAudioPCMBuffer, completionHandler: @escaping (Result<[Float], Error>) -> Void) {
-        print("🔄 Converting audio buffer using AudioKit...")
-        
-        // Сохраняем буфер во временный файл
-        let tempURL = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString + ".wav")
-        
-        do {
-            // Создаем временный файл из буфера
-            try saveBufferToWavFile(buffer, url: tempURL)
-            print("✅ Temporary WAV file created at: \(tempURL.path)")
             
-            // Используем AudioKit для конвертации
-            convertAudioFileToPCMArray(fileURL: tempURL) { result in
-                // Удаляем временный файл
-                try? FileManager.default.removeItem(at: tempURL)
-                
-                switch result {
-                case .success(let frames):
-                    print("✅ AudioKit conversion successful: \(frames.count) frames")
-                    completionHandler(.success(frames))
-                case .failure(let error):
-                    print("❌ AudioKit conversion failed: \(error.localizedDescription)")
-                    completionHandler(.failure(error))
-                }
-            }
-        } catch {
-            print("❌ Failed to save buffer to WAV: \(error.localizedDescription)")
-            completionHandler(.failure(error))
-        }
-    }
-    
-    /// Сохранение буфера аудио в WAV файл
-    /// Save audio buffer to WAV file
-    private func saveBufferToWavFile(_ buffer: AVAudioPCMBuffer, url: URL) throws {
-        let audioFile = try AVAudioFile(
-            forWriting: url,
-            settings: buffer.format.settings,
-            commonFormat: .pcmFormatFloat32,
-            interleaved: false
-        )
-        try audioFile.write(from: buffer)
-    }
-    
-    /// Конвертация аудио файла в массив PCM с помощью AudioKit
-    /// Convert audio file to PCM array using AudioKit
-    private func convertAudioFileToPCMArray(fileURL: URL, completionHandler: @escaping (Result<[Float], Error>) -> Void) {
-        var options = FormatConverter.Options()
-        options.format = .wav
-        options.sampleRate = 16000
-        options.bitDepth = 16
-        options.channels = 1
-        options.isInterleaved = false
-
-        let tempURL = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString)
-        
-        print("🔧 AudioKit конвертация: настройки:")
-        print("   - Входной файл: \(fileURL.lastPathComponent)")
-        print("   - Выходной файл: \(tempURL.lastPathComponent)")
-        print("   - Частота дискретизации: \(options.sampleRate) Hz")
-        print("   - Битовая глубина: \(options.bitDepth) бит")
-        print("   - Каналов: \(options.channels)")
-        
-        // Проверяем существование входного файла
-        if FileManager.default.fileExists(atPath: fileURL.path) {
-            do {
-                let attributes = try FileManager.default.attributesOfItem(atPath: fileURL.path)
-                if let fileSize = attributes[.size] as? NSNumber {
-                    print("   - Размер входного файла: \(fileSize.intValue) байт")
-                }
-            } catch {
-                print("⚠️ Не удалось получить атрибуты входного файла: \(error.localizedDescription)")
+            // Отправляем фреймы через delegate
+            DispatchQueue.main.async {
+                print("📤 Отправляем \(convertedFrames.count) фреймов для распознавания")
+                self.delegate?.audioRecordingManager(self, didProduceAudioFrames: convertedFrames)
             }
         } else {
-            print("❌ Входной файл не существует!")
-            completionHandler(.failure(NSError(domain: "AudioKit", code: -1, userInfo: [NSLocalizedDescriptionKey: "Входной файл не существует"])))
-            return
-        }
-        
-        let converter = FormatConverter(inputURL: fileURL, outputURL: tempURL, options: options)
-        
-        print("🔄 Начинаем конвертацию формата через AudioKit...")
-        converter.start { error in
-            if let error = error {
-                print("❌ Ошибка конвертации AudioKit: \(error.localizedDescription)")
-                completionHandler(.failure(error))
-                return
-            }
-
-            do {
-                let data = try Data(contentsOf: tempURL)
-                print("✅ Размер конвертированного файла: \(data.count) байт")
-                
-                // Проверка правильности формата WAV
-                if data.count < 44 {
-                    print("❌ Файл слишком мал для WAV формата")
-                    completionHandler(.failure(NSError(domain: "AudioKit", code: -2, userInfo: [NSLocalizedDescriptionKey: "Файл слишком мал для WAV формата"])))
-                    return
-                }
-                
-                // Проверка WAV заголовка
-                let header = data.prefix(4)
-                if let headerString = String(data: header, encoding: .ascii) {
-                    print("🔍 WAV заголовок: \(headerString)")
-                    if headerString != "RIFF" {
-                        print("⚠️ Неожиданный WAV заголовок: \(headerString)")
-                    }
-                }
-                
-                // Пропускаем WAV заголовок (44 байта) и конвертируем в Float
-                let floats = stride(from: 44, to: data.count, by: 2).map {
-                    return data[$0..<$0 + 2].withUnsafeBytes {
-                        let short = Int16(littleEndian: $0.load(as: Int16.self))
-                        return max(-1.0, min(Float(short) / 32767.0, 1.0))
-                    }
-                }
-                
-                print("✅ Конвертировано в \(floats.count) PCM float значений")
-                
-                // Анализ конвертированных данных
-                if !floats.isEmpty {
-                    let samplesToPrint = min(5, floats.count)
-                    var samplesInfo = "Первые \(samplesToPrint) конвертированных сэмплов: "
-                    for i in 0..<samplesToPrint {
-                        samplesInfo += String(format: "%.4f ", floats[i])
-                    }
-                    print("🎵 \(samplesInfo)")
-                    
-                    let maxAmplitude = floats.map { abs($0) }.max() ?? 0
-                    print("📊 Максимальная амплитуда после конвертации: \(maxAmplitude)")
-                    
-                    if maxAmplitude < 0.01 {
-                        print("⚠️ Низкая амплитуда после конвертации - возможно проблема с конвертацией")
-                    }
-                    
-                    // Нормализация амплитуды для улучшения распознавания
-                    if maxAmplitude > 0.01 {
-                        // Увеличиваем амплитуду для лучшего распознавания
-                        let normalizedFloats = floats.map { $0 / maxAmplitude * 0.9 }
-                        print("✅ Данные нормализованы до 90% от максимума")
-                        try? FileManager.default.removeItem(at: tempURL)
-                        completionHandler(.success(normalizedFloats))
-                        return
-                    } else {
-                        // Даже если амплитуда очень низкая, искусственно увеличиваем ее
-                        print("⚠️ Очень низкая амплитуда, искусственно увеличиваем сигнал")
-                        let amplifiedFloats = floats.map { $0 * 50.0 } // Значительное усиление
-                        try? FileManager.default.removeItem(at: tempURL)
-                        completionHandler(.success(amplifiedFloats))
-                        return
-                    }
-                }
-                
-                try? FileManager.default.removeItem(at: tempURL)
-                completionHandler(.success(floats))
-                
-            } catch {
-                print("❌ Не удалось прочитать конвертированный файл: \(error.localizedDescription)")
-                try? FileManager.default.removeItem(at: tempURL)
-                completionHandler(.failure(error))
-            }
+            print("❌ Не удалось конвертировать аудио")
         }
     }
     
-    /// Запасной метод конвертации в случае проблем с AudioKit
-    /// Fallback conversion method in case of AudioKit issues
-    private func convertBufferTo16kHzPCMFallback(_ buffer: AVAudioPCMBuffer) -> [Float]? {
+    /// Конвертация буфера аудио в PCM 16kHz
+    /// Convert audio buffer to 16kHz PCM
+    private func convertBufferTo16kHzPCM(_ buffer: AVAudioPCMBuffer) -> [Float]? {
         guard let channelData = buffer.floatChannelData?[0] else { return nil }
         
         let frameCount = Int(buffer.frameLength)
         let inputFormat = buffer.format
         let targetSampleRate: Double = 16000
         
-        print("⚠️ Using fallback conversion method")
         print("🔊 Converting audio from \(inputFormat.sampleRate)Hz to \(targetSampleRate)Hz")
         
         // Если уже 16kHz, просто возвращаем данные
@@ -447,7 +265,7 @@ class AudioRecordingManager: NSObject {
             return Array(UnsafeBufferPointer(start: channelData, count: frameCount))
         }
         
-        // Улучшенный ресэмплинг для изменения sample rate
+        // Ресэмплинг для изменения sample rate
         let ratio = targetSampleRate / inputFormat.sampleRate
         let outputFrameCount = Int(Double(frameCount) * ratio)
         
@@ -464,7 +282,6 @@ class AudioRecordingManager: NSObject {
             let fraction = sourceIndex - Double(lowerIndex)
             
             if lowerIndex >= frameCount || upperIndex >= frameCount {
-                // Защита от выхода за границы массива
                 continue
             }
             
@@ -477,20 +294,17 @@ class AudioRecordingManager: NSObject {
         
         // Нормализация амплитуды для улучшения распознавания
         let maxAmplitude = outputFrames.map { abs($0) }.max() ?? 1.0
-        if maxAmplitude > 0.01 { // Проверка на тишину
-            let normalizedFrames = outputFrames.map { $0 / maxAmplitude * 0.9 } // Нормализуем до 90% от максимума
+        if maxAmplitude > 0.01 {
+            let normalizedFrames = outputFrames.map { $0 / maxAmplitude * 0.9 }
             print("🔊 Audio normalized with max amplitude: \(maxAmplitude)")
             return normalizedFrames
         } else {
-            // Если амплитуда очень низкая, искусственно увеличиваем сигнал
-            print("⚠️ Очень низкая амплитуда в запасном методе, усиливаем сигнал")
-            let amplifiedFrames = outputFrames.map { $0 * 50.0 } // Значительное усиление
+            print("⚠️ Very low amplitude, amplifying signal")
+            let amplifiedFrames = outputFrames.map { $0 * 50.0 }
             return amplifiedFrames
         }
-        
-        print("🔊 Audio conversion complete, frames: \(outputFrames.count)")
-        return outputFrames
     }
+    
 }
 
 // MARK: - Audio Recording Errors

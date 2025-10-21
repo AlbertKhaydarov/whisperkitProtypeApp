@@ -38,7 +38,7 @@ class RecognitionPresenter {
     private var isTranscribing = false
     
     // MARK: - Model Selection
-    private var selectedModel: String = "tiny.en" // По умолчанию tiny.en (самая быстрая, английский язык)
+    private var selectedModel: String = "tiny.en" // По умолчанию tiny.en (WhisperKit формат)
     
     // MARK: - Delegate
     weak var delegate: RecognitionPresenterDelegate?
@@ -61,17 +61,17 @@ class RecognitionPresenter {
     /// Выбор модели для транскрипции
     /// Select model for transcription
     func selectModel(_ modelName: String) {
-        // Поддерживаем только английские модели с расширением .en
-        guard ["tiny.en", "base.en", "small.en"].contains(modelName) else {
+        // Поддерживаем модели WhisperKit с расширением .en
+        guard ["tiny.en", "base.en", "small.en", "medium.en", "large-v3"].contains(modelName) else {
             print("❌ Unsupported model: \(modelName)")
             return
         }
         selectedModel = modelName
         print("📱 Model selected: \(modelName)")
         
-        // Настраиваем конфигурацию WhisperKit на английский язык
+        // Настраиваем конфигурацию WhisperKit
         Task {
-            await updateWhisperConfiguration(language: "english")
+            await updateWhisperConfiguration(modelName: modelName, language: "en")
         }
     }
     
@@ -91,29 +91,27 @@ class RecognitionPresenter {
     /// Initialize transcription system
     func initializeTranscription() async {
         do {
+            // Сбрасываем состояние WhisperKit перед новой инициализацией
+            await whisperManager.reset()
+            
             // Обновляем статус
             await updateStatus(.loading)
             print("🚀 Starting transcription system initialization...")
             
-            // Инициализируем WhisperKit
-            print("📱 Initializing WhisperKit...")
+            // Настраиваем конфигурацию WhisperKit
+            await updateWhisperConfiguration(modelName: selectedModel, language: "en")
+            print("🌍 Установлен язык распознавания: en")
+            
+            // Инициализируем WhisperKit (автоматически загружает модель)
+            print("📱 Initializing WhisperKit with model: \(selectedModel)")
             try await whisperManager.initialize()
             print("✅ WhisperKit initialized")
             
-            // Устанавливаем английский язык для распознавания
-            await updateWhisperConfiguration(language: "english")
-            print("🌍 Установлен язык распознавания: english")
-            
-            // Загружаем выбранную модель
-            print("📥 Downloading model: \(selectedModel)")
-            await updateStatus(.downloadingModel(progress: 0.0))
-            let modelURL = try await downloadManager.downloadModel(selectedModel)
-            print("✅ Model downloaded: \(modelURL.path)")
-            
-            // Загружаем модель в WhisperKit
-            print("🔄 Loading model into WhisperKit...")
-            try await whisperManager.loadModel(from: modelURL)
-            print("✅ Model loaded into WhisperKit")
+            // Загружаем модель (WhisperKit делает это автоматически)
+            print("📥 Loading model: \(selectedModel)")
+            await updateStatus(.downloadingModel(progress: 0.2))
+            try await whisperManager.loadModel()
+            print("✅ Model loaded")
             
             // Прогреваем модель
             print("🔥 Warming up model...")
@@ -127,7 +125,7 @@ class RecognitionPresenter {
             print("✅ Transcription session created")
             
             // Система готова
-            print("🎯 Setting status to READY for model: \(selectedModel) with language: english")
+            print("🎯 Setting status to READY for model: \(selectedModel)")
             await updateStatus(.ready)
             print("✅ Transcription system ready for model: \(selectedModel)")
             
@@ -256,15 +254,16 @@ class RecognitionPresenter {
     }
     
     /// Добавляем метод для обновления конфигурации WhisperKit
-    private func updateWhisperConfiguration(language: String) async {
+    private func updateWhisperConfiguration(modelName: String, language: String) async {
+        // Создаем конфигурацию с параметром автоматического прогрева
         let config = WhisperConfiguration(
             language: language,
             translate: false,
-            beamSize: 5,
+            modelName: modelName,
             sampleRate: 16000
         )
         await whisperManager.updateConfiguration(config)
-        print("🔄 Обновлена конфигурация WhisperKit: язык = \(language)")
+        print("🔄 Обновлена конфигурация WhisperKit: модель = \(modelName), язык = \(language)")
     }
     
     private func handleError(_ error: Error) async {
@@ -305,10 +304,12 @@ extension RecognitionPresenter: WhisperKitManagerDelegate {
     func whisperKitManager(_ manager: WhisperKitManager, didUpdateWarmupProgress progress: Double) {
         Task {
             await updateProgress(progress)
-            // Обновляем статус только если прогресс меньше 0.9 (90%)
-            // После 90% статус будет установлен в .ready в initializeTranscription()
-            if progress < 0.9 {
-                await updateStatus(.warmingModel(progress: progress))
+            // Обновляем статус для любого прогресса
+            await updateStatus(.warmingModel(progress: progress))
+            
+            // Если прогрев завершен (100%), обновляем статус на ready
+            if progress >= 1.0 {
+                await updateStatus(.ready)
             }
         }
     }
@@ -392,11 +393,12 @@ extension RecognitionPresenter: ModelDownloadManagerDelegate {
         }
     }
     
-    func modelDownloadManager(_ manager: ModelDownloadManager, didCompleteDownloadFor modelName: String, at localURL: URL) {
+    func modelDownloadManager(_ manager: ModelDownloadManager, didCompleteDownloadFor modelName: String) {
         Task {
             print("✅ Download completed for \(modelName)")
-            // Не обновляем статус здесь, так как это делается в initializeTranscription()
-            // Status update is handled in initializeTranscription()
+            // Обновляем статус на ready после завершения загрузки модели
+            // Это важно, так как в initializeTranscription() мы только устанавливаем прогресс
+            await updateStatus(.ready)
         }
     }
     

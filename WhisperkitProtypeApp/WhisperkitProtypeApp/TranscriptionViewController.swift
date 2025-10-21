@@ -110,13 +110,11 @@ class TranscriptionViewController: UIViewController {
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         
-        // Инициализируем систему транскрипции только один раз
-        if !isInitialized {
+        // Всегда инициализируем систему транскрипции при появлении экрана
+        Task {
+            print("🚀 Starting initialization from viewDidAppear...")
+            await presenter.initializeTranscription()
             isInitialized = true
-            Task {
-                print("🚀 Starting initialization from viewDidAppear...")
-                await presenter.initializeTranscription()
-            }
         }
     }
     
@@ -207,6 +205,12 @@ class TranscriptionViewController: UIViewController {
         let modelNames = ["tiny.en", "base.en", "small.en"]
         
         guard selectedIndex < modelNames.count else { return }
+        
+        // Обновляем UI для индикации загрузки
+        updateButtonForStatus(.loading)
+        statusLabel.text = "Смена модели..."
+        progressView.isHidden = false
+        progressView.setProgress(0.0, animated: false)
         
         let selectedModel = modelNames[selectedIndex]
         presenter.selectModel(selectedModel)
