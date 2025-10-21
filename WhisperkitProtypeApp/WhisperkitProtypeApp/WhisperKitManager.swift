@@ -37,6 +37,7 @@ actor WhisperKitManager {
     private var currentSession: Any? // Placeholder for WhisperSession
     private var audioBuffer: [Float] = []
     private let minBufferSize = 16000 // Минимум 1 секунда аудио (16kHz)
+    private var isTranscribing = false // Флаг для предотвращения одновременных транскрипций
     
     // MARK: - Delegate
     weak var delegate: WhisperKitManagerDelegate?
@@ -97,9 +98,17 @@ actor WhisperKitManager {
         // Загружаем модель из файла с обработкой ошибок
         do {
             print("🔄 Attempting to initialize Whisper with file: \(url.lastPathComponent)")
-            // Инициализируем Whisper напрямую (он может выбросить исключение, но не возвращает nil)
-            whisper = try Whisper(fromFileURL: url, withParams: .default)
-            print("✅ Model loaded successfully")
+            
+            // Создаем параметры с жестко заданным английским языком
+            var params = WhisperParams.default
+            params.language = .english // Жестко устанавливаем английский язык
+            params.translate = false // Не переводим, так как уже английский
+            
+            print("🌍 Language set to: English")
+            
+            // Инициализируем Whisper с нашими параметрами
+            whisper = try Whisper(fromFileURL: url, withParams: params)
+            print("✅ Model loaded successfully with English language")
         } catch {
             print("❌ Failed to load model: \(error.localizedDescription)")
             print("❌ Model file path: \(url.path)")
@@ -126,8 +135,9 @@ actor WhisperKitManager {
         
         print("🔥 Warming up model...")
         
-        // Прогреваем модель с реальными данными
+        // Прогреваем модель с реальными данными (1 секунда тишины)
         let warmupData = Array(repeating: Float(0.0), count: 16000) // 1 секунда тишины
+        print("🔥 Warming up with English language detection...")
         _ = try await whisper.transcribe(audioFrames: warmupData)
         
         // Отправляем прогресс прогрева
@@ -158,6 +168,12 @@ actor WhisperKitManager {
             return []
         }
         
+        // Проверяем, не идет ли уже транскрипция
+        guard !isTranscribing else {
+            print("⏳ Transcription already in progress, buffering...")
+            return []
+        }
+        
         // Берем данные из буфера для транскрипции
         let framesToProcess = Array(audioBuffer.prefix(minBufferSize))
         audioBuffer.removeFirst(minBufferSize)
@@ -165,7 +181,10 @@ actor WhisperKitManager {
         print("🔄 Processing \(framesToProcess.count) audio frames for transcription")
         
         do {
+            isTranscribing = true
+            
             // Выполняем реальную транскрипцию с SwiftWhisper
+            print("🔄 Starting transcription with English language...")
             let segments = try await whisper.transcribe(audioFrames: framesToProcess)
             
             // Конвертируем в наш формат
@@ -181,9 +200,19 @@ actor WhisperKitManager {
             delegate?.whisperKitManager(self, didReceiveSegments: whisperSegments)
             
             print("✅ Transcription completed: \(whisperSegments.count) segments")
+            if !whisperSegments.isEmpty {
+                for segment in whisperSegments {
+                    print("📝 Segment: '\(segment.text)' (\(segment.start)-\(segment.end)s)")
+                }
+            } else {
+                print("⚠️ No speech detected in audio segment")
+            }
+            
+            isTranscribing = false
             return whisperSegments
             
         } catch {
+            isTranscribing = false
             print("❌ Transcription failed: \(error)")
             print("❌ Error details: \(error.localizedDescription)")
             throw WhisperKitError.transcriptionFailed
@@ -197,6 +226,12 @@ actor WhisperKitManager {
             throw WhisperKitError.notReady
         }
         
+        // Ждем завершения текущей транскрипции
+        while isTranscribing {
+            print("⏳ Waiting for current transcription to complete...")
+            try await Task.sleep(nanoseconds: 100_000_000) // 0.1 секунды
+        }
+        
         // Обрабатываем оставшиеся данные в буфере
         var finalSegments: [WhisperSegment] = []
         
@@ -204,6 +239,7 @@ actor WhisperKitManager {
             print("🔄 Processing remaining \(audioBuffer.count) audio frames...")
             
             do {
+                isTranscribing = true
                 let segments = try await whisper?.transcribe(audioFrames: audioBuffer) ?? []
                 finalSegments = segments.map { segment in
                     WhisperSegment(
@@ -214,7 +250,14 @@ actor WhisperKitManager {
                 }
                 audioBuffer.removeAll()
                 print("✅ Final transcription completed: \(finalSegments.count) segments")
+                if !finalSegments.isEmpty {
+                    for segment in finalSegments {
+                        print("📝 Final segment: '\(segment.text)' (\(segment.start)-\(segment.end)s)")
+                    }
+                }
+                isTranscribing = false
             } catch {
+                isTranscribing = false
                 print("❌ Final transcription failed: \(error)")
                 audioBuffer.removeAll()
             }
