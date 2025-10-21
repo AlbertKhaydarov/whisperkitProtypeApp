@@ -188,37 +188,24 @@ actor WhisperKitManager {
         }
         
         
-        // Проверяем, достаточно ли данных для транскрипции (минимум 3 секунды)
-        let minFramesForGoodRecognition = 48000
-        guard audioBuffer.count >= minFramesForGoodRecognition else {
-            return []
-        }
-        
         // Проверяем, не идет ли уже транскрипция
         guard !isTranscribing else {
             return []
         }
         
-        // Берем больше данных из буфера для лучшего качества распознавания
-        // Используем минимум 3 секунды аудио (48000 фреймов при 16kHz)
-        let framesToProcess = Array(audioBuffer.prefix(min(minFramesForGoodRecognition, audioBuffer.count)))
-        audioBuffer.removeFirst(framesToProcess.count)
-        
-        // Анализ данных для обработки
-        let maxAmplitudeToProcess = framesToProcess.map { abs($0) }.max() ?? 0
+        // Для потокового распознавания используем весь накопленный буфер
+        // WhisperKit сам определит оптимальное чанкование
+        guard !audioBuffer.isEmpty else {
+            return []
+        }
         
         do {
             isTranscribing = true
             
-            // Создаем временный файл для потокового распознавания
-            let tempFileURL = createTempAudioFile(from: framesToProcess)
-            
+            // Используем весь буфер для качественного распознавания
             let startTime = Date()
-            let result = try await whisperKit.transcribe(audioPath: tempFileURL.path)
+            let result = try await whisperKit.transcribe(audioArray: audioBuffer)
             let processingTime = Date().timeIntervalSince(startTime)
-            
-            // Удаляем временный файл
-            try? FileManager.default.removeItem(at: tempFileURL)
             
             // Сохраняем метрики времени обработки
             processingTimes.append(processingTime)
@@ -232,15 +219,21 @@ actor WhisperKitManager {
                 let segment = WhisperSegment(
                     text: firstResult.text,
                     start: 0.0,
-                    end: Double(framesToProcess.count) / 16000.0
+                    end: Double(audioBuffer.count) / 16000.0
                 )
                 whisperSegments = [segment]
+                
+                // НЕ очищаем буфер после промежуточных результатов
+                // Буфер будет очищен только при остановке записи
                 
             } else {
                 whisperSegments = []
             }
             
             // Отправляем результат через делегат безопасно
+            if !whisperSegments.isEmpty {
+                print("🔄 Отправляем промежуточные результаты: \(whisperSegments.map { $0.text }.joined(separator: " "))")
+            }
             notifyDelegate { delegate in
                 delegate.whisperKitManager(self, didReceiveSegments: whisperSegments)
             }
@@ -461,6 +454,13 @@ actor WhisperKitManager {
             print("❌ Ошибка файловой транскрипции: \(error.localizedDescription)")
             throw error
         }
+    }
+    
+    /// Очистка буфера аудио
+    /// Clear audio buffer
+    func clearAudioBuffer() {
+        audioBuffer.removeAll()
+        print("🧹 Аудио буфер очищен")
     }
 }
 
