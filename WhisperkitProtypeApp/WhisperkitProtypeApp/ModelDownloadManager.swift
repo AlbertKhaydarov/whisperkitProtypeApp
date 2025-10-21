@@ -136,12 +136,14 @@ class ModelDownloadManager: NSObject {
     /// Получение доступных моделей
     /// Get available models
     func getAvailableModels() -> [String] {
+        // Возвращаем только английские модели с расширением .en
         return ["tiny.en", "base.en", "small.en"]
     }
     
     // MARK: - Private Methods
     
     private func getModelConfiguration(_ modelName: String) -> ModelConfiguration? {
+        // Поддерживаем только английские модели с расширением .en
         let models: [String: ModelConfiguration] = [
             "tiny.en": ModelConfiguration(
                 name: "tiny.en",

@@ -22,7 +22,7 @@ struct WhisperConfiguration {
     var beamSize: Int = 5            // Размер луча для декодирования
     var sampleRate: Double = 16000   // Частота дискретизации
     
-    static let `default` = WhisperConfiguration()
+    static let defaultConfiguration = WhisperConfiguration()
 }
 
 // MARK: - WhisperKitManager Delegate
@@ -51,7 +51,7 @@ actor WhisperKitManager {
     private var isTranscribing = false // Флаг для предотвращения одновременных транскрипций
     
     // MARK: - Configuration
-    private var configuration: WhisperConfiguration = .default
+    private var configuration: WhisperConfiguration = WhisperConfiguration(language: "english", translate: false, beamSize: 5, sampleRate: 16000)
     
     // MARK: - Delegate
     weak var delegate: WhisperKitManagerDelegate?
@@ -149,10 +149,9 @@ actor WhisperKitManager {
             // Создаем параметры на основе текущей конфигурации
             var params = WhisperParams.default
             
-            // Устанавливаем язык из конфигурации
-            // Примечание: в реальной реализации нужно преобразовать строку в WhisperLanguage
-            // В этом примере предполагаем, что есть перечисление WhisperLanguage с кейсом .english
+            // Устанавливаем только английский язык для распознавания
             params.language = .english
+            print("🌍 Установлен английский язык распознавания")
             
             // Устанавливаем другие параметры из конфигурации
             params.translate = configuration.translate
@@ -164,7 +163,7 @@ actor WhisperKitManager {
             
             // Инициализируем Whisper с нашими параметрами
             whisper = try Whisper(fromFileURL: url, withParams: params)
-            print("✅ Model loaded successfully with English language")
+            print("✅ Model loaded successfully with \(configuration.language) language")
         } catch {
             print("❌ Failed to load model: \(error.localizedDescription)")
             print("❌ Model file path: \(url.path)")
@@ -191,8 +190,13 @@ actor WhisperKitManager {
         
         print("🔥 Warming up model...")
         
-        // Прогреваем модель с реальными данными (1 секунда тишины)
-        let warmupData = Array(repeating: Float(0.0), count: 16000) // 1 секунда тишины
+        // Прогреваем модель с реальными данными (1 секунда синусоидального сигнала)
+        // Используем синусоидальный сигнал вместо тишины для лучшего прогрева
+        var warmupData = [Float](repeating: 0.0, count: 16000) // 1 секунда аудио
+        for i in 0..<16000 {
+            // Создаем синусоидальный сигнал частотой 440 Гц (нота ля первой октавы)
+            warmupData[i] = sin(2.0 * Float.pi * 440.0 * Float(i) / 16000.0) * 0.5
+        }
         print("🔥 Warming up with English language detection...")
         _ = try await whisper.transcribe(audioFrames: warmupData)
         
@@ -285,16 +289,20 @@ actor WhisperKitManager {
             var whisperSegments: [WhisperSegment] = []
             
             if segments.isEmpty {
-                // Если распознавание не дало результатов, создаем тестовый сегмент
-                // для проверки работоспособности
-                print("⚠️ Empty segments received from SwiftWhisper, creating test segment")
-                whisperSegments = [
-                    WhisperSegment(
-                        text: "Тестовое распознавание",
-                        start: 0.0,
-                        end: 1.0
-                    )
-                ]
+                // Если распознавание не дало результатов, логируем это
+                print("⚠️ Empty segments received from SwiftWhisper")
+                // Возвращаем пустой массив вместо моковых данных
+                whisperSegments = []
+                
+                // Проверяем амплитуду аудио для диагностики
+                let maxAmplitude = framesToProcess.map { abs($0) }.max() ?? 0
+                print("📊 Диагностика: максимальная амплитуда аудио: \(maxAmplitude)")
+                
+                if maxAmplitude < 0.01 {
+                    print("⚠️ Возможная причина: слишком тихий звук (амплитуда < 0.01)")
+                } else if maxAmplitude > 0.9 {
+                    print("⚠️ Возможная причина: слишком громкий звук (амплитуда > 0.9)")
+                }
             } else {
                 // Обычная конвертация сегментов
                 whisperSegments = segments.map { segment in
@@ -309,6 +317,8 @@ actor WhisperKitManager {
                         end: end
                     )
                 }
+                
+                print("✅ Успешно распознано \(whisperSegments.count) сегментов речи")
             }
             
             // Отправляем результат через делегат безопасно
@@ -330,30 +340,26 @@ actor WhisperKitManager {
             
         } catch {
             isTranscribing = false
-            print("❌ Transcription failed: \(error)")
-            print("❌ Error details: \(error.localizedDescription)")
+            print("❌ Ошибка распознавания: \(error)")
+            print("❌ Детали ошибки: \(error.localizedDescription)")
             
-            // Создаем тестовый сегмент для отладки
-            let debugSegments = [
-                WhisperSegment(
-                    text: "Ошибка распознавания: \(error.localizedDescription)",
-                    start: 0.0,
-                    end: 1.0
-                )
-            ]
+            // Логируем диагностическую информацию
+            print("📊 Диагностика ошибки:")
+            print("   - Размер обрабатываемых данных: \(framesToProcess.count) фреймов")
+            let maxAmplitude = framesToProcess.map { abs($0) }.max() ?? 0
+            print("   - Максимальная амплитуда: \(maxAmplitude)")
             
-            // Отправляем отладочный сегмент через делегат
-            notifyDelegate { delegate in
-                delegate.whisperKitManager(self, didReceiveSegments: debugSegments)
+            if maxAmplitude < 0.01 {
+                print("⚠️ Возможная причина: слишком тихий звук (амплитуда < 0.01)")
             }
             
-            // В режиме отладки возвращаем тестовый сегмент вместо ошибки
-            #if DEBUG
-            print("⚠️ DEBUG MODE: Returning debug segment instead of throwing error")
-            return debugSegments
-            #else
+            // Отправляем пустой результат через делегат
+            notifyDelegate { delegate in
+                delegate.whisperKitManager(self, didFailWith: error)
+            }
+            
+            // Всегда выбрасываем ошибку для правильной обработки
             throw WhisperKitError.transcriptionFailed
-            #endif
         }
     }
     
@@ -411,15 +417,23 @@ actor WhisperKitManager {
                 
                 // Конвертируем в наш формат с проверкой на пустой результат
                 if segments.isEmpty {
-                    // Если распознавание не дало результатов, создаем тестовый сегмент
-                    print("⚠️ Empty segments received in finalize, creating test segment")
-                    finalSegments = [
-                        WhisperSegment(
-                            text: "Финальное тестовое распознавание",
-                            start: 0.0,
-                            end: 1.0
-                        )
-                    ]
+                    // Если распознавание не дало результатов, логируем это
+                    print("⚠️ Empty segments received in finalize")
+                    
+                    // Возвращаем пустой массив вместо моковых данных
+                    finalSegments = []
+                    
+                    // Проверяем амплитуду аудио для диагностики
+                    if !audioBuffer.isEmpty {
+                        let maxAmplitude = audioBuffer.map { abs($0) }.max() ?? 0
+                        print("📊 Финальная диагностика: максимальная амплитуда аудио: \(maxAmplitude)")
+                        
+                        if maxAmplitude < 0.01 {
+                            print("⚠️ Возможная причина: слишком тихий звук (амплитуда < 0.01)")
+                        } else if maxAmplitude > 0.9 {
+                            print("⚠️ Возможная причина: слишком громкий звук (амплитуда > 0.9)")
+                        }
+                    }
                 } else {
                     // Обычная конвертация сегментов
                     finalSegments = segments.map { segment in
@@ -434,6 +448,8 @@ actor WhisperKitManager {
                             end: end
                         )
                     }
+                    
+                    print("✅ Финальное распознавание завершено: \(finalSegments.count) сегментов")
                 }
                 
                 audioBuffer.removeAll()

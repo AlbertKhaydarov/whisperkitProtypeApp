@@ -38,7 +38,7 @@ class RecognitionPresenter {
     private var isTranscribing = false
     
     // MARK: - Model Selection
-    private var selectedModel: String = "tiny.en" // По умолчанию tiny.en (самая быстрая)
+    private var selectedModel: String = "tiny.en" // По умолчанию tiny.en (самая быстрая, английский язык)
     
     // MARK: - Delegate
     weak var delegate: RecognitionPresenterDelegate?
@@ -61,12 +61,18 @@ class RecognitionPresenter {
     /// Выбор модели для транскрипции
     /// Select model for transcription
     func selectModel(_ modelName: String) {
+        // Поддерживаем только английские модели с расширением .en
         guard ["tiny.en", "base.en", "small.en"].contains(modelName) else {
             print("❌ Unsupported model: \(modelName)")
             return
         }
         selectedModel = modelName
         print("📱 Model selected: \(modelName)")
+        
+        // Настраиваем конфигурацию WhisperKit на английский язык
+        Task {
+            await updateWhisperConfiguration(language: "english")
+        }
     }
     
     /// Получить доступные модели
@@ -94,6 +100,10 @@ class RecognitionPresenter {
             try await whisperManager.initialize()
             print("✅ WhisperKit initialized")
             
+            // Устанавливаем английский язык для распознавания
+            await updateWhisperConfiguration(language: "english")
+            print("🌍 Установлен язык распознавания: english")
+            
             // Загружаем выбранную модель
             print("📥 Downloading model: \(selectedModel)")
             await updateStatus(.downloadingModel(progress: 0.0))
@@ -117,7 +127,7 @@ class RecognitionPresenter {
             print("✅ Transcription session created")
             
             // Система готова
-            print("🎯 Setting status to READY for model: \(selectedModel)")
+            print("🎯 Setting status to READY for model: \(selectedModel) with language: english")
             await updateStatus(.ready)
             print("✅ Transcription system ready for model: \(selectedModel)")
             
@@ -157,9 +167,11 @@ class RecognitionPresenter {
     /// Stop transcription
     func stopTranscription() async {
         guard isTranscribing else {
-            print("⚠️ Not transcribing")
+            print("⚠️ Транскрипция не активна")
             return
         }
+        
+        print("⏹️ Останавливаем транскрипцию...")
         
         do {
             // Останавливаем запись
@@ -167,21 +179,37 @@ class RecognitionPresenter {
             
             // Финализируем транскрипцию
             await updateStatus(.processing)
+            print("🔄 Финализируем результаты распознавания...")
+            
             let finalSegments = try await whisperManager.finalize()
             
             // Обновляем финальный текст
-            let finalText = finalSegments.map(\.text).joined(separator: " ")
-            currentTranscription = finalText
+            if !finalSegments.isEmpty {
+                let finalText = finalSegments.map(\.text).joined(separator: " ")
+                print("✅ Финальный текст: \"\(finalText)\"")
+                currentTranscription = finalText
+                await updateTranscription(finalText)
+            } else {
+                print("ℹ️ Финальный результат пустой")
+                // Если финальный результат пустой, но у нас есть накопленный текст, используем его
+                if !currentTranscription.isEmpty {
+                    print("✅ Используем накопленный текст: \"\(currentTranscription)\"")
+                    await updateTranscription(currentTranscription)
+                } else {
+                    print("⚠️ Распознавание не дало результатов")
+                    await updateTranscription("Речь не распознана")
+                }
+            }
             
-            await updateTranscription(finalText)
             await updateStatus(.ready)
-            
             isTranscribing = false
-            
-            print("⏹️ Transcription stopped")
+            print("⏹️ Транскрипция остановлена")
             
         } catch {
+            print("❌ Ошибка при остановке транскрипции: \(error.localizedDescription)")
             await handleError(error)
+            isTranscribing = false
+            await updateStatus(.ready)
         }
     }
     
@@ -227,10 +255,48 @@ class RecognitionPresenter {
         }
     }
     
+    /// Добавляем метод для обновления конфигурации WhisperKit
+    private func updateWhisperConfiguration(language: String) async {
+        let config = WhisperConfiguration(
+            language: language,
+            translate: false,
+            beamSize: 5,
+            sampleRate: 16000
+        )
+        await whisperManager.updateConfiguration(config)
+        print("🔄 Обновлена конфигурация WhisperKit: язык = \(language)")
+    }
+    
     private func handleError(_ error: Error) async {
+        print("❌ Ошибка распознавания: \(error.localizedDescription)")
+        
+        // Определяем тип ошибки для лучшей диагностики
+        if let whisperError = error as? WhisperKitError {
+            switch whisperError {
+            case .transcriptionFailed:
+                print("⚠️ Ошибка процесса транскрипции")
+                // Если у нас есть накопленный текст, используем его
+                if !currentTranscription.isEmpty {
+                    print("✅ Используем накопленный текст несмотря на ошибку: \"\(currentTranscription)\"")
+                }
+            case .modelNotLoaded:
+                print("⚠️ Модель не загружена")
+            case .notReady:
+                print("⚠️ Система распознавания не готова")
+            default:
+                print("⚠️ Другая ошибка WhisperKit: \(whisperError)")
+            }
+        }
+        
+        // Обновляем статус и уведомляем делегат
+        await updateStatus(.error(error))
+        
         await MainActor.run {
             delegate?.recognitionPresenter(self, didEncounterError: error)
         }
+        
+        // Сбрасываем флаг транскрипции
+        isTranscribing = false
     }
 }
 
@@ -249,17 +315,36 @@ extension RecognitionPresenter: WhisperKitManagerDelegate {
     
     func whisperKitManager(_ manager: WhisperKitManager, didReceiveSegments segments: [WhisperSegment]) {
         Task {
-            let newText = segments.map { $0.text }.joined(separator: " ")
-            currentTranscription += newText
-            await updateTranscription(currentTranscription)
+            // Проверяем, не пустой ли массив сегментов
+            if !segments.isEmpty {
+                let newText = segments.map { $0.text }.joined(separator: " ")
+                print("🔊 Получены промежуточные результаты распознавания: \"\(newText)\"")
+                currentTranscription += newText
+                await updateTranscription(currentTranscription)
+            } else {
+                print("ℹ️ Получен пустой промежуточный результат распознавания")
+            }
         }
     }
     
     func whisperKitManager(_ manager: WhisperKitManager, didCompleteWithSegments segments: [WhisperSegment]) {
         Task {
-            let finalText = segments.map { $0.text }.joined(separator: " ")
-            currentTranscription = finalText
-            await updateTranscription(currentTranscription)
+            if !segments.isEmpty {
+                let finalText = segments.map { $0.text }.joined(separator: " ")
+                print("🔊 Получены финальные результаты распознавания: \"\(finalText)\"")
+                currentTranscription = finalText
+                await updateTranscription(currentTranscription)
+            } else {
+                print("ℹ️ Получен пустой финальный результат распознавания")
+                // Если финальный результат пустой, но у нас есть накопленный текст, сохраняем его
+                if !currentTranscription.isEmpty {
+                    print("✅ Используем накопленный текст: \"\(currentTranscription)\"")
+                    await updateTranscription(currentTranscription)
+                } else {
+                    print("⚠️ Распознавание не дало результатов")
+                    await updateTranscription("Речь не распознана")
+                }
+            }
         }
     }
     
