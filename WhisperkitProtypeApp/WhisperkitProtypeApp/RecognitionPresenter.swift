@@ -75,6 +75,24 @@ class RecognitionPresenter {
         }
     }
     
+    /// Включение режима высокого качества
+    /// Enable high quality mode
+    func enableHighQualityMode() async throws {
+        await whisperManager.enableHighQualityMode()
+        
+        // Переинициализируем систему с новой конфигурацией
+        await initializeTranscription()
+    }
+    
+    /// Включение стандартного режима
+    /// Enable standard mode
+    func enableStandardMode() async throws {
+        await whisperManager.enableStandardMode()
+        
+        // Переинициализируем систему с новой конфигурацией
+        await initializeTranscription()
+    }
+    
     /// Получить доступные модели
     /// Get available models
     func getAvailableModels() -> [String] {
@@ -149,12 +167,17 @@ class RecognitionPresenter {
             isTranscribing = true
             currentTranscription = ""
             
+            // Очищаем UI сразу
+            await updateTranscription("")
             await updateStatus(.recording)
+            
+            // Очищаем буфер WhisperKit перед началом новой записи
+            await whisperManager.clearAudioBuffer()
             
             // Начинаем запись аудио
             try await audioManager.startRecording()
             
-            print("🎤 Transcription started")
+            print("🎤 Transcription started - очищены предыдущие результаты")
             
         } catch {
             await handleError(error)
@@ -324,7 +347,8 @@ extension RecognitionPresenter: WhisperKitManagerDelegate {
                 let newText = segments.map { $0.text }.joined(separator: " ")
                 print("🔊 Получены промежуточные результаты распознавания: \"\(newText)\"")
                 
-                // Заменяем промежуточные результаты (WhisperKit возвращает полный текст)
+                // WhisperKit возвращает полный текст в каждом промежуточном результате
+                // Поэтому просто заменяем текущую транскрипцию
                 currentTranscription = newText
                 
                 print("🔊 Промежуточная транскрипция: \"\(currentTranscription)\"")

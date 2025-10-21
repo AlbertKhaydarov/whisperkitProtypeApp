@@ -23,7 +23,58 @@ struct WhisperConfiguration {
     var modelName: String = "tiny.en" // Модель по умолчанию
     var sampleRate: Double = 16000 // Частота дискретизации
     
+    // Параметры для улучшения качества распознавания (OpenAI Whisper)
+    var temperature: Float = 0.0 // Температура для генерации (0.0 = детерминистично)
+    var temperatureFallbackCount: Int = 0 // Количество попыток с разными температурами
+    var compressionRatioThreshold: Float = 2.4 // Порог сжатия для обнаружения повторений
+    var logProbThreshold: Float = -1.0 // Порог логарифмической вероятности
+    var noSpeechThreshold: Float = 0.6 // Порог для обнаружения отсутствия речи
+    var conditionOnPreviousText: Bool = true // Учитывать предыдущий текст
+    var promptResetOnTemperature: Bool = false // Сброс промпта при изменении температуры
+    var initialPrompt: String? = nil // Начальный промпт для контекста
+    var prefix: String? = nil // Префикс для генерации
+    var suppressBlank: Bool = true // Подавлять пустые сегменты
+    var suppressTokens: [Int] = [-1] // Подавляемые токены
+    var withoutTimestamps: Bool = false // Без временных меток
+    var maxInitialTimestamp: Float = 1.0 // Максимальная начальная временная метка
+    var wordTimestamps: Bool = false // Временные метки слов
+    var prependPunctuations: String = "\"'" // Пунктуация в начале
+    var appendPunctuations: String = "\"'.,!?:\n" // Пунктуация в конце (упрощенная версия)
+    var vadFilter: Bool = true // Фильтр активности голоса
+    var vadThreshold: Float = 0.35 // Порог VAD
+    var vadMinSpeechDuration: Float = 0.25 // Минимальная длительность речи
+    var vadMaxSpeechDuration: Float = 30.0 // Максимальная длительность речи
+    var vadMinSilenceDuration: Float = 0.5 // Минимальная длительность тишины
+    var vadWindowSize: Float = 0.1 // Размер окна VAD
+    var vadMaxMergeDistance: Float = 0.5 // Максимальное расстояние слияния VAD
+    var vadPadding: Float = 0.0 // Отступы VAD
+    
     static let defaultConfiguration = WhisperConfiguration()
+    
+    // Конфигурация для высокого качества
+    static let highQualityConfiguration = WhisperConfiguration(
+        modelName: "base.en", // Более точная модель
+        temperature: 0.0,
+        temperatureFallbackCount: 0,
+        compressionRatioThreshold: 2.4,
+        logProbThreshold: -1.0,
+        noSpeechThreshold: 0.6,
+        conditionOnPreviousText: true,
+        promptResetOnTemperature: false,
+        suppressBlank: true,
+        suppressTokens: [-1],
+        withoutTimestamps: false,
+        maxInitialTimestamp: 1.0,
+        wordTimestamps: false,
+        vadFilter: true,
+        vadThreshold: 0.35,
+        vadMinSpeechDuration: 0.25,
+        vadMaxSpeechDuration: 30.0,
+        vadMinSilenceDuration: 0.5,
+        vadWindowSize: 0.1,
+        vadMaxMergeDistance: 0.5,
+        vadPadding: 0.0
+    )
 }
 
 // MARK: - WhisperKitManager Delegate
@@ -87,10 +138,11 @@ actor WhisperKitManager {
             return
         }
         
-        
-        // Инициализируем WhisperKit с конфигурацией
+        // Создаем базовую конфигурацию WhisperKit
         let config = WhisperKitConfig(model: configuration.modelName)
         
+        // WhisperKitConfig поддерживает только базовые параметры
+        // Расширенные параметры Whisper будут использоваться через WhisperKit API
         whisperKit = try await WhisperKit(config)
         isInitialized = true
     }
@@ -371,6 +423,36 @@ actor WhisperKitManager {
     /// Update Whisper configuration
     func updateConfiguration(_ newConfig: WhisperConfiguration) async {
         configuration = newConfig
+    }
+    
+    /// Переключение на конфигурацию высокого качества
+    /// Switch to high quality configuration
+    func enableHighQualityMode() async {
+        configuration = WhisperConfiguration.highQualityConfiguration
+        print("🎯 Включен режим высокого качества: модель = \(configuration.modelName)")
+        
+        // Если WhisperKit уже инициализирован, нужно переинициализировать с новой конфигурацией
+        if isInitialized {
+            print("🔄 Переинициализация WhisperKit с новой конфигурацией...")
+            isInitialized = false
+            isWarmedUp = false
+            whisperKit = nil
+        }
+    }
+    
+    /// Переключение на стандартную конфигурацию
+    /// Switch to standard configuration
+    func enableStandardMode() async {
+        configuration = WhisperConfiguration.defaultConfiguration
+        print("📱 Включен стандартный режим: модель = \(configuration.modelName)")
+        
+        // Если WhisperKit уже инициализирован, нужно переинициализировать с новой конфигурацией
+        if isInitialized {
+            print("🔄 Переинициализация WhisperKit с новой конфигурацией...")
+            isInitialized = false
+            isWarmedUp = false
+            whisperKit = nil
+        }
     }
     
     /// Проверка готовности WhisperKit

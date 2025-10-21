@@ -52,6 +52,18 @@ class TranscriptionViewController: UIViewController {
         return control
     }()
     
+    private let qualityModeButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.setTitle("🎯 Высокое качество", for: .normal)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 15, weight: .medium)
+        button.backgroundColor = .systemGreen
+        button.setTitleColor(.white, for: .normal)
+        button.layer.cornerRadius = 8
+        button.tag = 0 // 0 = стандартный режим, 1 = высокое качество
+        return button
+    }()
+    
     private let resultsTextView: UITextView = {
         let textView = UITextView()
         textView.translatesAutoresizingMaskIntoConstraints = false
@@ -125,6 +137,7 @@ class TranscriptionViewController: UIViewController {
         
         // Добавляем компоненты на view
         view.addSubview(modelSegmentedControl)
+        view.addSubview(qualityModeButton)
         view.addSubview(statusLabel)
         view.addSubview(progressView)
         view.addSubview(startStopButton)
@@ -133,6 +146,7 @@ class TranscriptionViewController: UIViewController {
         
         // Настраиваем обработчики
         modelSegmentedControl.addTarget(self, action: #selector(modelSelectionChanged), for: .valueChanged)
+        qualityModeButton.addTarget(self, action: #selector(qualityModeToggled), for: .touchUpInside)
         
         // Настраиваем constraints
         NSLayoutConstraint.activate([
@@ -142,8 +156,14 @@ class TranscriptionViewController: UIViewController {
             modelSegmentedControl.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
             modelSegmentedControl.heightAnchor.constraint(equalToConstant: 32),
             
+            // Quality Mode Button
+            qualityModeButton.topAnchor.constraint(equalTo: modelSegmentedControl.bottomAnchor, constant: 10),
+            qualityModeButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+            qualityModeButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+            qualityModeButton.heightAnchor.constraint(equalToConstant: 36),
+            
             // Status Label
-            statusLabel.topAnchor.constraint(equalTo: modelSegmentedControl.bottomAnchor, constant: 20),
+            statusLabel.topAnchor.constraint(equalTo: qualityModeButton.bottomAnchor, constant: 20),
             statusLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
             statusLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
             
@@ -218,6 +238,58 @@ class TranscriptionViewController: UIViewController {
         // Переинициализируем систему с новой моделью
         Task {
             await presenter.initializeTranscription()
+        }
+    }
+    
+    @objc private func qualityModeToggled() {
+        let isHighQuality = qualityModeButton.tag == 0
+        
+        if isHighQuality {
+            // Переключаемся на высокое качество
+            qualityModeButton.tag = 1
+            qualityModeButton.setTitle("📱 Стандартный режим", for: .normal)
+            qualityModeButton.backgroundColor = .systemBlue
+            
+            // Обновляем UI для индикации загрузки
+            updateButtonForStatus(.loading)
+            statusLabel.text = "Включение режима высокого качества..."
+            progressView.isHidden = false
+            progressView.setProgress(0.0, animated: false)
+            
+            // Переключаемся на высокое качество
+            Task {
+                do {
+                    try await presenter.enableHighQualityMode()
+                } catch {
+                    await MainActor.run {
+                        self.statusLabel.text = "Ошибка: \(error.localizedDescription)"
+                        self.updateButtonForStatus(.ready)
+                    }
+                }
+            }
+        } else {
+            // Переключаемся на стандартный режим
+            qualityModeButton.tag = 0
+            qualityModeButton.setTitle("🎯 Высокое качество", for: .normal)
+            qualityModeButton.backgroundColor = .systemGreen
+            
+            // Обновляем UI для индикации загрузки
+            updateButtonForStatus(.loading)
+            statusLabel.text = "Включение стандартного режима..."
+            progressView.isHidden = false
+            progressView.setProgress(0.0, animated: false)
+            
+            // Переключаемся на стандартный режим
+            Task {
+                do {
+                    try await presenter.enableStandardMode()
+                } catch {
+                    await MainActor.run {
+                        self.statusLabel.text = "Ошибка: \(error.localizedDescription)"
+                        self.updateButtonForStatus(.ready)
+                    }
+                }
+            }
         }
     }
     
