@@ -35,6 +35,8 @@ actor WhisperKitManager {
     private var isInitialized = false
     private var isWarmedUp = false
     private var currentSession: Any? // Placeholder for WhisperSession
+    private var audioBuffer: [Float] = []
+    private let minBufferSize = 16000 // Минимум 1 секунда аудио (16kHz)
     
     // MARK: - Delegate
     weak var delegate: WhisperKitManagerDelegate?
@@ -146,25 +148,46 @@ actor WhisperKitManager {
             throw WhisperKitError.modelNotLoaded
         }
         
-        // Логируем получение аудио данных
-        print("🎵 Received \(audioFrames.count) audio frames for transcription")
+        // Добавляем фреймы в буфер
+        audioBuffer.append(contentsOf: audioFrames)
+        print("🎵 Received \(audioFrames.count) audio frames, buffer size: \(audioBuffer.count)")
         
-        // Выполняем реальную транскрипцию с SwiftWhisper
-        let segments = try await whisper.transcribe(audioFrames: audioFrames)
-        
-        // Конвертируем в наш формат
-        let whisperSegments = segments.map { segment in
-            WhisperSegment(
-                text: segment.text,
-                start: Double(segment.startTime),
-                end: Double(segment.endTime)
-            )
+        // Проверяем, достаточно ли данных для транскрипции
+        guard audioBuffer.count >= minBufferSize else {
+            print("⏳ Not enough audio data yet, buffering...")
+            return []
         }
         
-        // Отправляем результат через делегат
-        delegate?.whisperKitManager(self, didReceiveSegments: whisperSegments)
+        // Берем данные из буфера для транскрипции
+        let framesToProcess = Array(audioBuffer.prefix(minBufferSize))
+        audioBuffer.removeFirst(minBufferSize)
         
-        return whisperSegments
+        print("🔄 Processing \(framesToProcess.count) audio frames for transcription")
+        
+        do {
+            // Выполняем реальную транскрипцию с SwiftWhisper
+            let segments = try await whisper.transcribe(audioFrames: framesToProcess)
+            
+            // Конвертируем в наш формат
+            let whisperSegments = segments.map { segment in
+                WhisperSegment(
+                    text: segment.text,
+                    start: Double(segment.startTime),
+                    end: Double(segment.endTime)
+                )
+            }
+            
+            // Отправляем результат через делегат
+            delegate?.whisperKitManager(self, didReceiveSegments: whisperSegments)
+            
+            print("✅ Transcription completed: \(whisperSegments.count) segments")
+            return whisperSegments
+            
+        } catch {
+            print("❌ Transcription failed: \(error)")
+            print("❌ Error details: \(error.localizedDescription)")
+            throw WhisperKitError.transcriptionFailed
+        }
     }
     
     /// Финализация транскрипции
@@ -174,12 +197,32 @@ actor WhisperKitManager {
             throw WhisperKitError.notReady
         }
         
-        // Финализируем транскрипцию (SwiftWhisper не имеет finalize, возвращаем пустой массив)
-        let whisperSegments: [WhisperSegment] = []
+        // Обрабатываем оставшиеся данные в буфере
+        var finalSegments: [WhisperSegment] = []
         
-        delegate?.whisperKitManager(self, didCompleteWithSegments: whisperSegments)
+        if !audioBuffer.isEmpty {
+            print("🔄 Processing remaining \(audioBuffer.count) audio frames...")
+            
+            do {
+                let segments = try await whisper?.transcribe(audioFrames: audioBuffer) ?? []
+                finalSegments = segments.map { segment in
+                    WhisperSegment(
+                        text: segment.text,
+                        start: Double(segment.startTime),
+                        end: Double(segment.endTime)
+                    )
+                }
+                audioBuffer.removeAll()
+                print("✅ Final transcription completed: \(finalSegments.count) segments")
+            } catch {
+                print("❌ Final transcription failed: \(error)")
+                audioBuffer.removeAll()
+            }
+        }
         
-        return whisperSegments
+        delegate?.whisperKitManager(self, didCompleteWithSegments: finalSegments)
+        
+        return finalSegments
     }
     
     /// Установка делегата
@@ -207,6 +250,7 @@ actor WhisperKitManager {
         isInitialized = false
         isWarmedUp = false
         currentSession = nil
+        audioBuffer.removeAll()
         print("🔄 SwiftWhisper state reset")
     }
     
