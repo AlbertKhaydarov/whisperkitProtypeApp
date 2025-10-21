@@ -79,6 +79,7 @@ class TranscriptionViewController: UIViewController {
     
     // MARK: - Properties
     private let presenter: RecognitionPresenter
+    private var isInitialized = false
     private var currentStatus: AppStatus = .loading
     
     // MARK: - Initialization
@@ -104,10 +105,18 @@ class TranscriptionViewController: UIViewController {
         if selectedIndex < modelNames.count {
             presenter.selectModel(modelNames[selectedIndex])
         }
+    }
+    
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
         
-        // Инициализируем систему транскрипции
-        Task {
-            await presenter.initializeTranscription()
+        // Инициализируем систему транскрипции только один раз
+        if !isInitialized {
+            isInitialized = true
+            Task {
+                print("🚀 Starting initialization from viewDidAppear...")
+                await presenter.initializeTranscription()
+            }
         }
     }
     
@@ -253,8 +262,8 @@ class TranscriptionViewController: UIViewController {
             statusLabel.text = "🔴 Запись..."
         case .processing:
             statusLabel.text = "⚙️ Обработка..."
-        case .error:
-            statusLabel.text = "❌ Ошибка"
+        case .error(let error):
+            statusLabel.text = "❌ Ошибка: \(error.localizedDescription)"
         }
     }
     

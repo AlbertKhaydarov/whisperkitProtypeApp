@@ -87,19 +87,34 @@ class RecognitionPresenter {
         do {
             // Обновляем статус
             await updateStatus(.loading)
+            print("🚀 Starting transcription system initialization...")
             
             // Инициализируем WhisperKit
+            print("📱 Initializing WhisperKit...")
             try await whisperManager.initialize()
+            print("✅ WhisperKit initialized")
             
             // Загружаем выбранную модель
+            print("📥 Downloading model: \(selectedModel)")
+            await updateStatus(.downloadingModel(progress: 0.0))
             let modelURL = try await downloadManager.downloadModel(selectedModel)
+            print("✅ Model downloaded: \(modelURL.path)")
+            
+            // Загружаем модель в WhisperKit
+            print("🔄 Loading model into WhisperKit...")
             try await whisperManager.loadModel(from: modelURL)
+            print("✅ Model loaded into WhisperKit")
             
             // Прогреваем модель
+            print("🔥 Warming up model...")
+            await updateStatus(.warmingModel(progress: 0.0))
             try await whisperManager.warmup()
+            print("✅ Model warmed up")
             
             // Создаем новую сессию транскрипции
+            print("🆕 Creating new transcription session...")
             try await whisperManager.startNewSession()
+            print("✅ Transcription session created")
             
             // Система готова
             print("🎯 Setting status to READY for model: \(selectedModel)")
@@ -107,6 +122,8 @@ class RecognitionPresenter {
             print("✅ Transcription system ready for model: \(selectedModel)")
             
         } catch {
+            print("❌ Failed to initialize transcription system: \(error)")
+            print("❌ Error details: \(error.localizedDescription)")
             await updateStatus(.error(error))
             await handleError(error)
         }
