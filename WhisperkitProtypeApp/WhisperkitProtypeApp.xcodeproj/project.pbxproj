@@ -7,8 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		042C97012EA7DEAF000257C4 /* SwiftWhisper in Frameworks */ = {isa = PBXBuildFile; productRef = 042C97002EA7DEAF000257C4 /* SwiftWhisper */; };
-		042C970E2EA7F809000257C4 /* AudioKit in Frameworks */ = {isa = PBXBuildFile; productRef = 042C970D2EA7F809000257C4 /* AudioKit */; };
 		042C97112EA7FC40000257C4 /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = 042C97102EA7FC40000257C4 /* WhisperKit */; };
 /* End PBXBuildFile section */
 
@@ -43,8 +41,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				042C97112EA7FC40000257C4 /* WhisperKit in Frameworks */,
-				042C970E2EA7F809000257C4 /* AudioKit in Frameworks */,
-				042C97012EA7DEAF000257C4 /* SwiftWhisper in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -87,8 +83,6 @@
 			);
 			name = WhisperkitProtypeApp;
 			packageProductDependencies = (
-				042C97002EA7DEAF000257C4 /* SwiftWhisper */,
-				042C970D2EA7F809000257C4 /* AudioKit */,
 				042C97102EA7FC40000257C4 /* WhisperKit */,
 			);
 			productName = WhisperkitProtypeApp;
@@ -120,8 +114,6 @@
 			mainGroup = 042C95472EA54316000257C4;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				042C96FF2EA7DEAF000257C4 /* XCRemoteSwiftPackageReference "SwiftWhisper" */,
-				042C970C2EA7F809000257C4 /* XCRemoteSwiftPackageReference "AudioKit" */,
 				042C970F2EA7FC40000257C4 /* XCRemoteSwiftPackageReference "whisperkit" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -356,22 +348,6 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		042C96FF2EA7DEAF000257C4 /* XCRemoteSwiftPackageReference "SwiftWhisper" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/exPHAT/SwiftWhisper.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 1.2.0;
-			};
-		};
-		042C970C2EA7F809000257C4 /* XCRemoteSwiftPackageReference "AudioKit" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/AudioKit/AudioKit.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 5.6.5;
-			};
-		};
 		042C970F2EA7FC40000257C4 /* XCRemoteSwiftPackageReference "whisperkit" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/argmaxinc/whisperkit";
@@ -383,16 +359,6 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		042C97002EA7DEAF000257C4 /* SwiftWhisper */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 042C96FF2EA7DEAF000257C4 /* XCRemoteSwiftPackageReference "SwiftWhisper" */;
-			productName = SwiftWhisper;
-		};
-		042C970D2EA7F809000257C4 /* AudioKit */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 042C970C2EA7F809000257C4 /* XCRemoteSwiftPackageReference "AudioKit" */;
-			productName = AudioKit;
-		};
 		042C97102EA7FC40000257C4 /* WhisperKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 042C970F2EA7FC40000257C4 /* XCRemoteSwiftPackageReference "whisperkit" */;
