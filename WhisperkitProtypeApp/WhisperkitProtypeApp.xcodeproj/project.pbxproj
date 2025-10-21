@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		042C97012EA7DEAF000257C4 /* SwiftWhisper in Frameworks */ = {isa = PBXBuildFile; productRef = 042C97002EA7DEAF000257C4 /* SwiftWhisper */; };
+		042C970E2EA7F809000257C4 /* AudioKit in Frameworks */ = {isa = PBXBuildFile; productRef = 042C970D2EA7F809000257C4 /* AudioKit */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -40,6 +41,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				042C970E2EA7F809000257C4 /* AudioKit in Frameworks */,
 				042C97012EA7DEAF000257C4 /* SwiftWhisper in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -84,6 +86,7 @@
 			name = WhisperkitProtypeApp;
 			packageProductDependencies = (
 				042C97002EA7DEAF000257C4 /* SwiftWhisper */,
+				042C970D2EA7F809000257C4 /* AudioKit */,
 			);
 			productName = WhisperkitProtypeApp;
 			productReference = 042C95502EA54316000257C4 /* WhisperkitProtypeApp.app */;
@@ -115,6 +118,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				042C96FF2EA7DEAF000257C4 /* XCRemoteSwiftPackageReference "SwiftWhisper" */,
+				042C970C2EA7F809000257C4 /* XCRemoteSwiftPackageReference "AudioKit" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 042C95512EA54316000257C4 /* Products */;
@@ -356,6 +360,14 @@
 				minimumVersion = 1.2.0;
 			};
 		};
+		042C970C2EA7F809000257C4 /* XCRemoteSwiftPackageReference "AudioKit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/AudioKit/AudioKit.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 5.6.5;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -363,6 +375,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 042C96FF2EA7DEAF000257C4 /* XCRemoteSwiftPackageReference "SwiftWhisper" */;
 			productName = SwiftWhisper;
+		};
+		042C970D2EA7F809000257C4 /* AudioKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 042C970C2EA7F809000257C4 /* XCRemoteSwiftPackageReference "AudioKit" */;
+			productName = AudioKit;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
