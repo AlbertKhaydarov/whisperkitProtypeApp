@@ -175,6 +175,9 @@ class RecognitionPresenter {
             // Останавливаем запись
             try await audioManager.stopRecording()
             
+            // Очищаем буфер аудио после остановки записи
+            await whisperManager.clearAudioBuffer()
+            
             // Финализируем транскрипцию
             await updateStatus(.processing)
             print("🔄 Финализируем результаты распознавания...")
@@ -320,7 +323,11 @@ extension RecognitionPresenter: WhisperKitManagerDelegate {
             if !segments.isEmpty {
                 let newText = segments.map { $0.text }.joined(separator: " ")
                 print("🔊 Получены промежуточные результаты распознавания: \"\(newText)\"")
-                currentTranscription += newText
+                
+                // Заменяем промежуточные результаты (WhisperKit возвращает полный текст)
+                currentTranscription = newText
+                
+                print("🔊 Промежуточная транскрипция: \"\(currentTranscription)\"")
                 await updateTranscription(currentTranscription)
             } else {
                 print("ℹ️ Получен пустой промежуточный результат распознавания")
@@ -333,15 +340,21 @@ extension RecognitionPresenter: WhisperKitManagerDelegate {
             if !segments.isEmpty {
                 let finalText = segments.map { $0.text }.joined(separator: " ")
                 print("🔊 Получены финальные результаты распознавания: \"\(finalText)\"")
+                
+                // Финальные результаты заменяют накопленный текст
                 currentTranscription = finalText
+                
+                print("✅ Финальный текст: \"\(currentTranscription)\"")
                 await updateTranscription(currentTranscription)
             } else {
                 print("ℹ️ Получен пустой финальный результат распознавания")
-                // Если финальный результат пустой, но у нас есть накопленный текст, сохраняем его
+                // Если финальный результат пустой, но есть накопленный текст - используем его
                 if !currentTranscription.isEmpty {
                     print("✅ Используем накопленный текст: \"\(currentTranscription)\"")
                     await updateTranscription(currentTranscription)
                 } else {
+                    // Только если совсем нет текста - показываем сообщение
+                    currentTranscription = ""
                     print("⚠️ Распознавание не дало результатов")
                     await updateTranscription("Речь не распознана")
                 }
@@ -393,11 +406,7 @@ extension RecognitionPresenter: AudioRecordingManagerDelegate {
                 
                 if let firstResult = result.first, !firstResult.text.isEmpty {
                     print("🎉 ФАЙЛОВАЯ ТРАНСКРИПЦИЯ: '\(firstResult.text)'")
-                    
-                    // Обновляем транскрипцию с пометкой о файловом распознавании
-                    let fileTranscription = "[ФАЙЛ] \(firstResult.text)"
-                    currentTranscription = fileTranscription
-                    await updateTranscription(fileTranscription)
+                    // Файловая транскрипция используется только для отладки, не обновляем UI
                 } else {
                     print("⚠️ Файловая транскрипция вернула пустой результат")
                 }
