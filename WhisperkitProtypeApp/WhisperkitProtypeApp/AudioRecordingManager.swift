@@ -402,10 +402,18 @@ class AudioRecordingManager: NSObject {
                     
                     // Нормализация амплитуды для улучшения распознавания
                     if maxAmplitude > 0.01 {
-                        let normalizedFloats = floats.map { $0 / maxAmplitude * 0.8 }
-                        print("✅ Данные нормализованы до 80% от максимума")
+                        // Увеличиваем амплитуду для лучшего распознавания
+                        let normalizedFloats = floats.map { $0 / maxAmplitude * 0.9 }
+                        print("✅ Данные нормализованы до 90% от максимума")
                         try? FileManager.default.removeItem(at: tempURL)
                         completionHandler(.success(normalizedFloats))
+                        return
+                    } else {
+                        // Даже если амплитуда очень низкая, искусственно увеличиваем ее
+                        print("⚠️ Очень низкая амплитуда, искусственно увеличиваем сигнал")
+                        let amplifiedFloats = floats.map { $0 * 50.0 } // Значительное усиление
+                        try? FileManager.default.removeItem(at: tempURL)
+                        completionHandler(.success(amplifiedFloats))
                         return
                     }
                 }
@@ -470,9 +478,14 @@ class AudioRecordingManager: NSObject {
         // Нормализация амплитуды для улучшения распознавания
         let maxAmplitude = outputFrames.map { abs($0) }.max() ?? 1.0
         if maxAmplitude > 0.01 { // Проверка на тишину
-            let normalizedFrames = outputFrames.map { $0 / maxAmplitude * 0.8 } // Нормализуем до 80% от максимума
+            let normalizedFrames = outputFrames.map { $0 / maxAmplitude * 0.9 } // Нормализуем до 90% от максимума
             print("🔊 Audio normalized with max amplitude: \(maxAmplitude)")
             return normalizedFrames
+        } else {
+            // Если амплитуда очень низкая, искусственно увеличиваем сигнал
+            print("⚠️ Очень низкая амплитуда в запасном методе, усиливаем сигнал")
+            let amplifiedFrames = outputFrames.map { $0 * 50.0 } // Значительное усиление
+            return amplifiedFrames
         }
         
         print("🔊 Audio conversion complete, frames: \(outputFrames.count)")
