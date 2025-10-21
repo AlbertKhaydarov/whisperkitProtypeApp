@@ -70,10 +70,40 @@ actor WhisperKitManager {
         
         print("📥 Loading Whisper model from: \(url.lastPathComponent)")
         
-        // Загружаем модель из файла
-        whisper = try Whisper(fromFileURL: url, withParams: .default)
+        // Проверяем существование файла модели
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            print("❌ Model file not found at path: \(url.path)")
+            throw WhisperKitError.modelFileNotFound
+        }
         
-        print("✅ Model loaded successfully")
+        // Проверяем размер файла модели
+        do {
+            let fileAttributes = try FileManager.default.attributesOfItem(atPath: url.path)
+            if let fileSize = fileAttributes[.size] as? NSNumber {
+                let sizeInMB = fileSize.doubleValue / (1024 * 1024)
+                print("📊 Model file size: \(String(format: "%.2f", sizeInMB)) MB")
+                
+                // Проверяем минимальный размер файла (обычно модели Whisper весят больше 100MB)
+                if sizeInMB < 10 {
+                    print("⚠️ Warning: Model file seems too small (\(String(format: "%.2f", sizeInMB)) MB)")
+                }
+            }
+        } catch {
+            print("⚠️ Could not get file attributes: \(error.localizedDescription)")
+        }
+        
+        // Загружаем модель из файла с обработкой ошибок
+        do {
+            print("🔄 Attempting to initialize Whisper with file: \(url.lastPathComponent)")
+            // Инициализируем Whisper напрямую (он может выбросить исключение, но не возвращает nil)
+            whisper = try Whisper(fromFileURL: url, withParams: .default)
+            print("✅ Model loaded successfully")
+        } catch {
+            print("❌ Failed to load model: \(error.localizedDescription)")
+            print("❌ Model file path: \(url.path)")
+            print("❌ Model file exists: \(FileManager.default.fileExists(atPath: url.path))")
+            throw WhisperKitError.modelLoadFailed(error)
+        }
     }
     
     /// Прогрев модели
@@ -192,6 +222,9 @@ enum WhisperKitError: Error, LocalizedError {
     case notInitialized
     case notReady
     case modelNotLoaded
+    case modelFileNotFound
+    case modelFileCorrupted
+    case modelLoadFailed(Error)
     case transcriptionFailed
     
     var errorDescription: String? {
@@ -202,6 +235,12 @@ enum WhisperKitError: Error, LocalizedError {
             return "WhisperKit не готов к работе"
         case .modelNotLoaded:
             return "Модель не загружена"
+        case .modelFileNotFound:
+            return "Файл модели не найден"
+        case .modelFileCorrupted:
+            return "Файл модели поврежден или имеет неправильный формат"
+        case .modelLoadFailed(let error):
+            return "Ошибка загрузки модели: \(error.localizedDescription)"
         case .transcriptionFailed:
             return "Ошибка транскрипции"
         }
