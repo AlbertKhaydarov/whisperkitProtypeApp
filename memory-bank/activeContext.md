@@ -1,9 +1,9 @@
-# Active Context - WhisperKit Integration
+# Active Context - SwiftWhisper Integration
 
 ## 🎯 Current Focus
-**Phase:** PLAN Mode - Comprehensive Planning Complete
-**Task:** Integrate WhisperKit for real-time speech recognition
-**Status:** Planning completed, ready for implementation
+**Phase:** PLAN Mode - Architectural Planning in Progress
+**Task:** Integrate SwiftWhisper for real-time speech recognition
+**Status:** Comprehensive planning and architecture design in progress
 
 ## 📋 Planning Results
 
@@ -22,16 +22,18 @@
 
 ### Key Components Designed
 1. **WhisperKitManager** - Core coordination singleton
-2. **ModelDownloadManager** - Model caching and download
-3. **AudioRecordingManager** - Real-time audio capture
-4. **TranscriptionViewController** - UI implementation
-5. **RetryManager** - Error handling with exponential backoff
-6. **ErrorHandler** - User-friendly error messages
-7. **LanguageDetector** - English-only validation
+2. **ModelDownloadManager** - Model caching and download with progress
+3. **AudioRecordingManager** - Real-time audio capture and 16kHz PCM conversion
+4. **TranscriptionViewController** - UI implementation with MVP pattern
+5. **RecognitionPresenter** - Business logic and coordination
+6. **RetryManager** - Error handling with exponential backoff
+7. **ErrorHandler** - User-friendly error messages
+8. **ProgressView** - Model download and warmup progress
+9. **StartStopButton** - Recording control with state management
 
 ## 🚀 Next Action
-**Begin Phase 1: Project Setup & Dependencies**
-- Add WhisperKit via Swift Package Manager
-- Configure Info.plist for microphone permissions
-- Create component file structure
-- Ready to transition to IMPLEMENT mode
+**Complete Architectural Planning Phase**
+- Finalize component architecture design
+- Complete technical specification
+- Plan implementation phases with dependencies
+- Prepare for CREATIVE mode transition

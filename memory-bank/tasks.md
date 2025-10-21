@@ -724,7 +724,7 @@ private let logger = Logger(subsystem: "com.app.whisperkit", category: "ModelMan
 ### 🎯 Key Planning Achievements
 
 #### ✅ VAN Analysis Integration:
-- **Priority 1 (Critical)**: ML Kit ModelManager, Delegate pattern, Size validation
+- **Priority 1 (Critical)**: CoreML Kit ModelManager, Delegate pattern, Size validation
 - **Priority 2 (Important)**: Multiple models, Enhanced errors, Performance metrics  
 - **Priority 3 (Desirable)**: Auto updates, Cache compression, Usage analytics
 
@@ -736,6 +736,6 @@ private let logger = Logger(subsystem: "com.app.whisperkit", category: "ModelMan
 - **Performance Monitoring**: Comprehensive metrics
 
 #### ✅ Risk Mitigation:
-- **High Risk**: ML Kit + WhisperKit integration (abstraction layer)
+- **High Risk**: COREML Kit + WhisperKit integration (abstraction layer)
 - **Medium Risk**: Actor complexity, Multiple models (gradual implementation)
 - **Low Risk**: Progress reporting, Performance metrics (proven patterns)

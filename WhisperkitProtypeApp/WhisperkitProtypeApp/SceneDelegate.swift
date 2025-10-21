@@ -16,27 +16,11 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
       
         guard let windowScene = (scene as? UIWindowScene) else { return }
         let window = UIWindow(windowScene: windowScene)
-        window.rootViewController = UINavigationController(rootViewController: ViewController())
+        window.rootViewController = UINavigationController(rootViewController: TranscriptionViewController())
         self.window = window
         window.makeKeyAndVisible()
         
-        // Инициализируем WhisperKit при запуске приложения
-        // Initialize WhisperKit on app launch
-        Task {
-            await initializeWhisperKit()
-        }
-    }
-    
-    /// Инициализация WhisperKit при запуске приложения
-    /// Initialize WhisperKit on app launch
-    private func initializeWhisperKit() async {
-        do {
-            print("🚀 Starting WhisperKit initialization...")
-            try await WhisperKitManager.shared.initialize()
-            print("✅ WhisperKit initialized successfully")
-        } catch {
-            print("❌ Failed to initialize WhisperKit: \(error.localizedDescription)")
-        }
+        print("🚀 App launched with TranscriptionViewController")
     }
 
     func sceneDidDisconnect(_ scene: UIScene) {
