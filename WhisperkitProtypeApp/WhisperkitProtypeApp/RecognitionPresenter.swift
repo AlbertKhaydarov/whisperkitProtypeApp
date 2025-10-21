@@ -382,6 +382,31 @@ extension RecognitionPresenter: AudioRecordingManagerDelegate {
             await handleError(error)
         }
     }
+    
+    func audioRecordingManager(_ manager: AudioRecordingManager, didTranscribeFile filePath: String) {
+        Task {
+            print("🎵 Получен файл для транскрипции: \(filePath)")
+            
+            // Используем WhisperKitManager для транскрипции файла
+            do {
+                let result = try await whisperManager.transcribeFile(audioPath: filePath)
+                
+                if let firstResult = result.first, !firstResult.text.isEmpty {
+                    print("🎉 ФАЙЛОВАЯ ТРАНСКРИПЦИЯ: '\(firstResult.text)'")
+                    
+                    // Обновляем транскрипцию с пометкой о файловом распознавании
+                    let fileTranscription = "[ФАЙЛ] \(firstResult.text)"
+                    currentTranscription = fileTranscription
+                    await updateTranscription(fileTranscription)
+                } else {
+                    print("⚠️ Файловая транскрипция вернула пустой результат")
+                }
+                
+            } catch {
+                print("❌ Ошибка файловой транскрипции: \(error.localizedDescription)")
+            }
+        }
+    }
 }
 
 // MARK: - ModelDownloadManager Delegate

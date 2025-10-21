@@ -7,6 +7,7 @@
 
 import Foundation
 import AVFoundation
+import WhisperKit
 
 
 // MARK: - AudioRecordingManager Delegate
@@ -15,6 +16,7 @@ protocol AudioRecordingManagerDelegate: AnyObject {
     func audioRecordingManager(_ manager: AudioRecordingManager, didStopRecording: Bool)
     func audioRecordingManager(_ manager: AudioRecordingManager, didProduceAudioFrames frames: [Float])
     func audioRecordingManager(_ manager: AudioRecordingManager, didFailWith error: Error)
+    func audioRecordingManager(_ manager: AudioRecordingManager, didTranscribeFile filePath: String)
 }
 
 /// Менеджер для записи аудио и конвертации в формат 16kHz PCM
@@ -25,6 +27,10 @@ class AudioRecordingManager: NSObject {
     private let audioEngine: AVAudioEngine
     private let audioConverter: AVAudioConverter?
     private var isRecording = false
+    
+    // MARK: - Debug Properties
+    private var debugAudioFile: AVAudioFile?
+    private var debugAudioBuffer: [Float] = []
     
     // MARK: - Delegate
     weak var delegate: AudioRecordingManagerDelegate?
@@ -63,10 +69,8 @@ class AudioRecordingManager: NSObject {
         try audioSession.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker])
         try audioSession.setActive(true)
         
-        print("🎤 Audio session configured successfully")
         #else
         // На macOS настройка аудио сессии не требуется
-        print("🎤 Audio session configured for macOS")
         #endif
     }
     
@@ -97,7 +101,6 @@ class AudioRecordingManager: NSObject {
         // Запускаем движок сначала
         do {
             try audioEngine.start()
-            print("🎤 Audio engine started")
         } catch {
             print("❌ Failed to start audio engine: \(error)")
             throw AudioRecordingError.audioEngineSetupFailed
@@ -106,8 +109,14 @@ class AudioRecordingManager: NSObject {
         // Теперь устанавливаем tap после запуска движка
         setupAudioTap()
         
+        // Создаем отладочный аудио файл
+        do {
+            try await setupDebugAudioFile()
+        } catch {
+            print("❌ Ошибка создания отладочного файла: \(error)")
+        }
+        
         isRecording = true
-        print("🎤 Recording started")
         
         await MainActor.run {
             delegate?.audioRecordingManager(self, didStartRecording: true)
@@ -131,9 +140,11 @@ class AudioRecordingManager: NSObject {
         // Останавливаем аудио движок
         audioEngine.stop()
         
+        // Завершаем отладочную запись в файл
+        await finishDebugAudioFile()
+        
         isRecording = false
         
-        print("⏹️ Recording stopped")
         
         await MainActor.run {
             delegate?.audioRecordingManager(self, didStopRecording: true)
@@ -148,7 +159,6 @@ class AudioRecordingManager: NSObject {
         }
         
         audioEngine.pause()
-        print("⏸️ Recording paused")
     }
     
     /// Возобновление записи
@@ -159,7 +169,6 @@ class AudioRecordingManager: NSObject {
         }
         
         try audioEngine.start()
-        print("▶️ Recording resumed")
     }
     
     /// Проверка статуса записи
@@ -179,7 +188,6 @@ class AudioRecordingManager: NSObject {
             inputNode.removeTap(onBus: 0)
         }
         
-        print("🎤 Audio engine prepared (without tap)")
     }
     
     private func setupAudioTap() {
@@ -187,64 +195,23 @@ class AudioRecordingManager: NSObject {
         
         // Настраиваем формат для tap
         let inputFormat = inputNode.outputFormat(forBus: 0)
-        print("🎤 Input format: \(inputFormat.sampleRate)Hz, \(inputFormat.channelCount) channels")
         
         // Устанавливаем tap с правильным форматом
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { [weak self] buffer, time in
             self?.processAudioBuffer(buffer, time: time)
         }
-        print("🎤 Audio tap installed successfully")
     }
     
     private func processAudioBuffer(_ buffer: AVAudioPCMBuffer, time: AVAudioTime) {
-        print("🔄 Получен аудио буфер: \(buffer.frameLength) фреймов, формат: \(buffer.format)")
-        
-        // Анализ входящего буфера для отладки
-        if let channelData = buffer.floatChannelData?[0] {
-            let frameCount = Int(buffer.frameLength)
-            let samplesToPrint = min(5, frameCount)
-            
-            var samplesInfo = "Первые \(samplesToPrint) сэмплов: "
-            for i in 0..<samplesToPrint {
-                samplesInfo += String(format: "%.4f ", channelData[i])
-            }
-            print("🎵 \(samplesInfo)")
-            
-            // Анализ амплитуды для определения наличия речи
-            let maxAmplitude = (0..<frameCount).map { abs(channelData[$0]) }.max() ?? 0
-            print("📊 Максимальная амплитуда: \(maxAmplitude)")
-            
-            if maxAmplitude < 0.01 {
-                print("⚠️ Низкая амплитуда - возможно тишина или шум")
-            }
-        }
-        
-        // Конвертация в 16kHz PCM используя стандартную конвертацию AVFoundation
-        print("🔄 Начинаем конвертацию аудио...")
-        
+        // Конвертируем аудио в нужный формат
         if let convertedFrames = convertBufferTo16kHzPCM(buffer) {
-            print("✅ Успешная конвертация: \(convertedFrames.count) фреймов")
-            
-            // Анализ конвертированных данных
-            if !convertedFrames.isEmpty {
-                let samplesToPrint = min(5, convertedFrames.count)
-                var samplesInfo = "Первые \(samplesToPrint) конвертированных сэмплов: "
-                for i in 0..<samplesToPrint {
-                    samplesInfo += String(format: "%.4f ", convertedFrames[i])
-                }
-                print("🎵 \(samplesInfo)")
-                
-                let maxAmplitude = convertedFrames.map { abs($0) }.max() ?? 0
-                print("📊 Максимальная амплитуда после конвертации: \(maxAmplitude)")
-            }
+            // Записываем отладочные данные в файл
+            writeDebugAudioToFile(convertedFrames)
             
             // Отправляем фреймы через delegate
             DispatchQueue.main.async {
-                print("📤 Отправляем \(convertedFrames.count) фреймов для распознавания")
                 self.delegate?.audioRecordingManager(self, didProduceAudioFrames: convertedFrames)
             }
-        } else {
-            print("❌ Не удалось конвертировать аудио")
         }
     }
     
@@ -257,11 +224,9 @@ class AudioRecordingManager: NSObject {
         let inputFormat = buffer.format
         let targetSampleRate: Double = 16000
         
-        print("🔊 Converting audio from \(inputFormat.sampleRate)Hz to \(targetSampleRate)Hz")
         
         // Если уже 16kHz, просто возвращаем данные
         if inputFormat.sampleRate == targetSampleRate {
-            print("🔊 Audio already at target sample rate, no conversion needed")
             return Array(UnsafeBufferPointer(start: channelData, count: frameCount))
         }
         
@@ -269,7 +234,6 @@ class AudioRecordingManager: NSObject {
         let ratio = targetSampleRate / inputFormat.sampleRate
         let outputFrameCount = Int(Double(frameCount) * ratio)
         
-        print("🔊 Resampling ratio: \(ratio), output frame count: \(outputFrameCount)")
         
         var outputFrames: [Float] = []
         outputFrames.reserveCapacity(outputFrameCount)
@@ -296,12 +260,153 @@ class AudioRecordingManager: NSObject {
         let maxAmplitude = outputFrames.map { abs($0) }.max() ?? 1.0
         if maxAmplitude > 0.01 {
             let normalizedFrames = outputFrames.map { $0 / maxAmplitude * 0.9 }
-            print("🔊 Audio normalized with max amplitude: \(maxAmplitude)")
             return normalizedFrames
         } else {
-            print("⚠️ Very low amplitude, amplifying signal")
             let amplifiedFrames = outputFrames.map { $0 * 50.0 }
             return amplifiedFrames
+        }
+    }
+    
+    // MARK: - Debug Audio File Methods
+    
+    /// Настройка отладочного аудио файла для записи
+    /// Setup debug audio file for recording
+    private func setupDebugAudioFile() async throws {
+        // Создаем директорию для отладочных файлов
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let debugDirectory = documentsPath.appendingPathComponent("DebugAudio")
+        
+        // Создаем директорию если не существует
+        try FileManager.default.createDirectory(at: debugDirectory, withIntermediateDirectories: true, attributes: nil)
+        
+        // Создаем уникальное имя файла с временной меткой
+        let timestamp = Int(Date().timeIntervalSince1970)
+        let fileName = "debug_audio_\(timestamp).wav"
+        let fileURL = debugDirectory.appendingPathComponent(fileName)
+        
+        // Настраиваем формат для записи (16kHz, 16-bit, mono)
+        let audioFormat = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: 16000,
+            channels: 1,
+            interleaved: false
+        )!
+        
+        // Создаем аудио файл
+        debugAudioFile = try AVAudioFile(forWriting: fileURL, settings: audioFormat.settings)
+        debugAudioBuffer.removeAll()
+        
+        print("🎵 Отладочный файл создан: \(fileURL.lastPathComponent)")
+    }
+    
+    /// Запись отладочных аудио данных в файл
+    /// Write debug audio data to file
+    private func writeDebugAudioToFile(_ frames: [Float]) {
+        guard let audioFile = debugAudioFile else { 
+            return 
+        }
+        
+        // Логируем информацию о фреймах
+        if frames.count > 0 {
+            let maxAmplitude = frames.map { abs($0) }.max() ?? 0
+            print("🎵 Записываем \(frames.count) фреймов, макс. амплитуда: \(maxAmplitude)")
+        }
+        
+        // Добавляем фреймы в буфер
+        debugAudioBuffer.append(contentsOf: frames)
+        
+        // Записываем в файл каждые 1000 фреймов (примерно 62.5ms при 16kHz)
+        if debugAudioBuffer.count >= 1000 {
+            let framesToWrite = Array(debugAudioBuffer.prefix(1000))
+            debugAudioBuffer.removeFirst(1000)
+            
+            // Создаем PCM буфер для записи
+            let buffer = AVAudioPCMBuffer(pcmFormat: audioFile.processingFormat, frameCapacity: AVAudioFrameCount(framesToWrite.count))!
+            buffer.frameLength = AVAudioFrameCount(framesToWrite.count)
+            
+            // Копируем данные в буфер
+            if let channelData = buffer.floatChannelData?[0] {
+                for (index, sample) in framesToWrite.enumerated() {
+                    channelData[index] = sample
+                }
+            }
+            
+            // Записываем в файл
+            do {
+                try audioFile.write(from: buffer)
+            } catch {
+                print("❌ Ошибка записи в отладочный файл: \(error)")
+            }
+        }
+    }
+    
+    /// Завершение записи отладочного аудио файла
+    /// Finish debug audio file recording
+    private func finishDebugAudioFile() async {
+        guard let audioFile = debugAudioFile else { return }
+        
+        print("🔄 Завершаем запись отладочного файла. Осталось фреймов: \(debugAudioBuffer.count)")
+        
+        // Записываем оставшиеся данные
+        if !debugAudioBuffer.isEmpty {
+            let buffer = AVAudioPCMBuffer(pcmFormat: audioFile.processingFormat, frameCapacity: AVAudioFrameCount(debugAudioBuffer.count))!
+            buffer.frameLength = AVAudioFrameCount(debugAudioBuffer.count)
+            
+            if let channelData = buffer.floatChannelData?[0] {
+                for (index, sample) in debugAudioBuffer.enumerated() {
+                    channelData[index] = sample
+                }
+            }
+            
+            do {
+                try audioFile.write(from: buffer)
+            } catch {
+                print("❌ Ошибка записи оставшихся данных: \(error)")
+            }
+        }
+        
+        // Закрываем файл
+        let fileURL = audioFile.url
+        debugAudioFile = nil
+        debugAudioBuffer.removeAll()
+        
+        print("✅ Отладочный файл сохранен: \(fileURL.lastPathComponent)")
+        
+        // Отправляем файл на распознавание через WhisperKit
+        await transcribeAudioFile(fileURL)
+    }
+    
+    /// Транскрипция аудио файла через WhisperKit
+    /// Transcribe audio file using WhisperKit
+    private func transcribeAudioFile(_ fileURL: URL) async {
+        print("🎵 Начинаем файловую транскрипцию: \(fileURL.lastPathComponent)")
+        
+        // Проверяем размер файла
+        do {
+            let fileAttributes = try FileManager.default.attributesOfItem(atPath: fileURL.path)
+            if let fileSize = fileAttributes[.size] as? NSNumber {
+                print("📁 Размер файла: \(fileSize.intValue) байт")
+                if fileSize.intValue < 1000 {
+                    print("⚠️ Файл слишком маленький! Возможно, аудио не записалось.")
+                }
+            }
+        } catch {
+            print("⚠️ Не удалось получить размер файла: \(error)")
+        }
+        
+        do {
+            // Используем тот же WhisperKit, что и для потокового распознавания
+            // Передаем путь к файлу через delegate для транскрипции
+            print("🔄 Отправляем файл на транскрипцию через RecognitionPresenter...")
+            
+            // Отправляем файл через delegate для транскрипции
+            await MainActor.run {
+                self.delegate?.audioRecordingManager(self, didTranscribeFile: fileURL.path)
+            }
+            return
+            
+        } catch {
+            print("❌ Ошибка при отправке файла на транскрипцию: \(error.localizedDescription)")
         }
     }
     

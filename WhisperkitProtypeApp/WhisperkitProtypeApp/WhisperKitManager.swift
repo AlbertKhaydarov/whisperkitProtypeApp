@@ -6,7 +6,8 @@
 //
 
 import Foundation
-import WhisperKit // Импортируем WhisperKit для работы с Whisper API
+import WhisperKit
+import AVFoundation // Импортируем WhisperKit для работы с Whisper API
 
 // MARK: - WhisperSegment Model
 struct WhisperSegment {
@@ -86,13 +87,11 @@ actor WhisperKitManager {
             return
         }
         
-        print("🚀 Initializing WhisperKit...")
         
         // Инициализируем WhisperKit с конфигурацией
         let config = WhisperKitConfig(model: configuration.modelName)
         
         whisperKit = try await WhisperKit(config)
-        print("✅ WhisperKit initialized successfully")
         isInitialized = true
     }
     
@@ -107,12 +106,10 @@ actor WhisperKitManager {
             throw WhisperKitError.notInitialized
         }
         
-        print("📥 Loading Whisper model: \(configuration.modelName)")
         
         // WhisperKit автоматически загружает модель при инициализации
         // Дополнительная проверка не требуется, так как whisperKit уже проверен выше
         
-        print("✅ Model loaded successfully")
     }
     
     /// Прогрев модели
@@ -135,7 +132,6 @@ actor WhisperKitManager {
             return
         }
         
-        print("🔥 Warming up model...")
         
         // Отправляем начальный прогресс прогрева
         notifyDelegate { delegate in
@@ -157,7 +153,6 @@ actor WhisperKitManager {
         // Прогреваем модель
         do {
             _ = try await whisperKit.transcribe(audioArray: warmupData)
-            print("🔥 Model warmed up with test transcription")
             
             // Отправляем финальный прогресс прогрева
             notifyDelegate { delegate in
@@ -165,7 +160,6 @@ actor WhisperKitManager {
             }
             
             isWarmedUp = true
-            print("✅ Model warmed up successfully")
         } catch {
             print("❌ Failed to warm up model: \(error.localizedDescription)")
             throw WhisperKitError.modelLoadFailed(error)
@@ -175,77 +169,60 @@ actor WhisperKitManager {
     /// Транскрипция аудио фреймов
     /// Transcribe audio frames
     func transcribe(audioFrames: [Float]) async throws -> [WhisperSegment] {
+        
         guard isInitialized && isWarmedUp else {
-            print("❌ WhisperKit не готов: initialized=\(isInitialized), warmedUp=\(isWarmedUp)")
             throw WhisperKitError.notReady
         }
         
         guard let whisperKit = whisperKit else {
-            print("❌ WhisperKit не инициализирован")
             throw WhisperKitError.modelNotLoaded
         }
         
-        // Анализ входящих аудио фреймов
-        if !audioFrames.isEmpty {
-            let samplesToPrint = min(5, audioFrames.count)
-            var samplesInfo = "Первые \(samplesToPrint) входящих сэмплов: "
-            for i in 0..<samplesToPrint {
-                samplesInfo += String(format: "%.4f ", audioFrames[i])
-            }
-            print("🎵 \(samplesInfo)")
-            
-            let maxAmplitude = audioFrames.map { abs($0) }.max() ?? 0
-            print("📊 Максимальная амплитуда входящих данных: \(maxAmplitude)")
-            
-            if maxAmplitude < 0.01 {
-                print("⚠️ Низкая амплитуда входящих данных - возможно тишина")
-            }
-        }
         
         // Добавляем фреймы в буфер с ограничением размера
         audioBuffer.append(contentsOf: audioFrames)
         
         // Проверяем, не превышен ли максимальный размер буфера
         if audioBuffer.count > maxBufferSize {
-            print("⚠️ Аудио буфер превышает максимальный размер (\(audioBuffer.count) > \(maxBufferSize)), обрезаем...")
             audioBuffer = Array(audioBuffer.suffix(maxBufferSize))
         }
         
-        print("🎵 Получено \(audioFrames.count) аудио фреймов, размер буфера: \(audioBuffer.count)")
         
-        // Проверяем, достаточно ли данных для транскрипции
-        guard audioBuffer.count >= minBufferSize else {
-            print("⏳ Недостаточно аудио данных для распознавания, буферизуем...")
+        // Проверяем, достаточно ли данных для транскрипции (минимум 3 секунды)
+        let minFramesForGoodRecognition = 48000
+        guard audioBuffer.count >= minFramesForGoodRecognition else {
             return []
         }
         
         // Проверяем, не идет ли уже транскрипция
         guard !isTranscribing else {
-            print("⏳ Транскрипция уже выполняется, буферизуем...")
             return []
         }
         
-        // Берем данные из буфера для транскрипции
-        let framesToProcess = Array(audioBuffer.prefix(minBufferSize))
-        audioBuffer.removeFirst(minBufferSize)
+        // Берем больше данных из буфера для лучшего качества распознавания
+        // Используем минимум 3 секунды аудио (48000 фреймов при 16kHz)
+        let framesToProcess = Array(audioBuffer.prefix(min(minFramesForGoodRecognition, audioBuffer.count)))
+        audioBuffer.removeFirst(framesToProcess.count)
         
         // Анализ данных для обработки
         let maxAmplitudeToProcess = framesToProcess.map { abs($0) }.max() ?? 0
-        print("🔄 Обработка \(framesToProcess.count) аудио фреймов для распознавания (макс. амплитуда: \(maxAmplitudeToProcess))")
         
         do {
             isTranscribing = true
             
-            // Выполняем транскрипцию с WhisperKit
-            print("🔄 Starting transcription with WhisperKit...")
+            // Создаем временный файл для потокового распознавания
+            let tempFileURL = createTempAudioFile(from: framesToProcess)
             
             let startTime = Date()
-            let result = try await whisperKit.transcribe(audioArray: framesToProcess)
+            let result = try await whisperKit.transcribe(audioPath: tempFileURL.path)
             let processingTime = Date().timeIntervalSince(startTime)
+            
+            // Удаляем временный файл
+            try? FileManager.default.removeItem(at: tempFileURL)
             
             // Сохраняем метрики времени обработки
             processingTimes.append(processingTime)
-            print("⏱️ Processing time: \(String(format: "%.2f", processingTime))s (avg: \(String(format: "%.2f", averageProcessingTime))s)")
+            
             
             // Конвертируем результат в наш формат
             var whisperSegments: [WhisperSegment] = []
@@ -259,9 +236,7 @@ actor WhisperKitManager {
                 )
                 whisperSegments = [segment]
                 
-                print("✅ Успешно распознано: '\(firstResult.text)'")
             } else {
-                print("⚠️ Empty transcription result")
                 whisperSegments = []
             }
             
@@ -270,32 +245,13 @@ actor WhisperKitManager {
                 delegate.whisperKitManager(self, didReceiveSegments: whisperSegments)
             }
             
-            print("✅ Transcription completed: \(whisperSegments.count) segments")
-            if !whisperSegments.isEmpty {
-                for segment in whisperSegments {
-                    print("📝 Segment: '\(segment.text)' (\(segment.start)-\(segment.end)s)")
-                }
-            } else {
-                print("⚠️ No speech detected in audio segment")
-            }
             
             isTranscribing = false
             return whisperSegments
             
         } catch {
             isTranscribing = false
-            print("❌ Ошибка распознавания: \(error)")
-            print("❌ Детали ошибки: \(error.localizedDescription)")
-            
-            // Логируем диагностическую информацию
-            print("📊 Диагностика ошибки:")
-            print("   - Размер обрабатываемых данных: \(framesToProcess.count) фреймов")
-            let maxAmplitude = framesToProcess.map { abs($0) }.max() ?? 0
-            print("   - Максимальная амплитуда: \(maxAmplitude)")
-            
-            if maxAmplitude < 0.01 {
-                print("⚠️ Возможная причина: слишком тихий звук (амплитуда < 0.01)")
-            }
+            print("❌ Ошибка распознавания: \(error.localizedDescription)")
             
             // Отправляем пустой результат через делегат
             notifyDelegate { delegate in
@@ -316,7 +272,6 @@ actor WhisperKitManager {
         
         // Ждем завершения текущей транскрипции
         if isTranscribing {
-            print("⏳ Waiting for current transcription to complete...")
             try await withCheckedThrowingContinuation { continuation in
                 Task {
                     // Ожидаем завершения транскрипции с таймаутом
@@ -328,7 +283,6 @@ actor WhisperKitManager {
                     }
                     
                     if isTranscribing {
-                        print("⚠️ Transcription wait timeout exceeded, proceeding anyway")
                         isTranscribing = false
                     }
                     
@@ -341,7 +295,6 @@ actor WhisperKitManager {
         var finalSegments: [WhisperSegment] = []
         
         if !audioBuffer.isEmpty {
-            print("🔄 Processing remaining \(audioBuffer.count) audio frames...")
             
             do {
                 isTranscribing = true
@@ -356,7 +309,6 @@ actor WhisperKitManager {
                 
                 // Сохраняем метрики времени обработки
                 processingTimes.append(processingTime)
-                print("⏱️ Final processing time: \(String(format: "%.2f", processingTime))s")
                 
                 // Конвертируем результат в наш формат
                 if let firstResult = result.first, !firstResult.text.isEmpty {
@@ -366,24 +318,15 @@ actor WhisperKitManager {
                         end: Double(audioBuffer.count) / 16000.0
                     )
                     finalSegments = [segment]
-                    print("✅ Финальное распознавание завершено: '\(firstResult.text)'")
                 } else {
-                    print("⚠️ Empty final transcription result")
                     finalSegments = []
                 }
                 
                 audioBuffer.removeAll()
-                print("✅ Final transcription completed: \(finalSegments.count) segments")
-                if !finalSegments.isEmpty {
-                    for segment in finalSegments {
-                        print("📝 Final segment: '\(segment.text)' (\(segment.start)-\(segment.end)s)")
-                    }
-                }
                 isTranscribing = false
             } catch {
                 isTranscribing = false
-                print("❌ Final transcription failed: \(error)")
-                print("❌ Error details: \(error.localizedDescription)")
+                print("❌ Final transcription failed: \(error.localizedDescription)")
                 audioBuffer.removeAll()
                 
                 // Уведомляем делегат об ошибке
@@ -419,7 +362,6 @@ actor WhisperKitManager {
         // Очищаем буфер для новой сессии
         audioBuffer.removeAll()
         currentSession = "session_\(Date().timeIntervalSince1970)"
-        print("🆕 New transcription session started")
     }
     
     /// Сброс состояния
@@ -430,24 +372,95 @@ actor WhisperKitManager {
         isWarmedUp = false
         currentSession = nil
         audioBuffer.removeAll()
-        print("🔄 WhisperKit state reset")
     }
     
     /// Обновление конфигурации Whisper
     /// Update Whisper configuration
     func updateConfiguration(_ newConfig: WhisperConfiguration) async {
         configuration = newConfig
-        print("🔄 WhisperKit configuration updated")
-        print("🌍 Language: \(configuration.language)")
-        print("🔄 Translate: \(configuration.translate)")
-        print("🤖 Model: \(configuration.modelName)")
-        print("📊 Sample Rate: \(configuration.sampleRate)Hz")
     }
     
     /// Проверка готовности WhisperKit
     /// Check if WhisperKit is ready
     var isReady: Bool {
         return isInitialized && isWarmedUp
+    }
+    
+    /// Создание временного аудио файла из фреймов
+    /// Create temporary audio file from frames
+    private func createTempAudioFile(from frames: [Float]) -> URL {
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let tempDir = documentsPath.appendingPathComponent("TempAudio")
+        
+        // Создаем директорию если не существует
+        try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        
+        let fileName = "temp_\(Date().timeIntervalSince1970).wav"
+        let fileURL = tempDir.appendingPathComponent(fileName)
+        
+        // Создаем WAV файл
+        let sampleRate: Double = 16000
+        let audioFormat = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1)!
+        
+        do {
+            let audioFile = try AVAudioFile(forWriting: fileURL, settings: audioFormat.settings)
+            let buffer = AVAudioPCMBuffer(pcmFormat: audioFormat, frameCapacity: AVAudioFrameCount(frames.count))!
+            buffer.frameLength = AVAudioFrameCount(frames.count)
+            
+            if let channelData = buffer.floatChannelData?[0] {
+                for (index, sample) in frames.enumerated() {
+                    channelData[index] = sample
+                }
+            }
+            
+            try audioFile.write(from: buffer)
+        } catch {
+            print("❌ Ошибка создания временного файла: \(error)")
+        }
+        
+        return fileURL
+    }
+    
+    /// Транскрипция аудио файла
+    /// Transcribe audio file
+    func transcribeFile(audioPath: String) async throws -> [WhisperSegment] {
+        guard isInitialized && isWarmedUp else {
+            throw WhisperKitError.notReady
+        }
+        
+        guard let whisperKit = whisperKit else {
+            throw WhisperKitError.modelNotLoaded
+        }
+        
+        print("🔄 Выполняем файловую транскрипцию: \(audioPath)")
+        
+        do {
+            let startTime = Date()
+            let result = try await whisperKit.transcribe(audioPath: audioPath)
+            let processingTime = Date().timeIntervalSince(startTime)
+            
+            print("🔄 Файловая транскрипция завершена за \(processingTime) сек")
+            
+            // Конвертируем результат в наш формат
+            var whisperSegments: [WhisperSegment] = []
+            
+            for transcriptionResult in result {
+                if !transcriptionResult.text.isEmpty {
+                    let segment = WhisperSegment(
+                        text: transcriptionResult.text,
+                        start: 0.0, // TranscriptionResult не содержит временные метки
+                        end: 0.0
+                    )
+                    whisperSegments.append(segment)
+                }
+            }
+            
+            return whisperSegments
+            
+        } catch {
+            print("❌ Ошибка файловой транскрипции: \(error.localizedDescription)")
+            throw error
+        }
     }
 }
 
