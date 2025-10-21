@@ -1,10 +1,10 @@
-# WhisperKit Integration Project Brief
+# SwiftWhisper Integration Project Brief
 
 ## 🎯 Project Goal
-Develop an iOS module for real-time speech recognition (speech-to-text) using WhisperKit library, working completely offline through CoreML.
+Develop an iOS application for real-time speech recognition (speech-to-text) using SwiftWhisper library, working completely offline with local model processing.
 
 ## 📱 Application Purpose
-**Voice Transcription App** - An iOS application that captures speech from microphone in real-time and converts it to text using advanced AI models running locally on the device.
+**Real-time Voice Transcription App** - An iOS application that captures speech from microphone in real-time and converts it to text using SwiftWhisper models running locally on the device with minimal latency.
 
 ## 🎨 Key Features
 - **Real-time transcription** with live intermediate results display
@@ -15,13 +15,14 @@ Develop an iOS module for real-time speech recognition (speech-to-text) using Wh
 - **Professional error handling** - user-friendly error messages
 
 ## 🛠️ Technical Stack
-- **Platform:** iOS 16.0+
-- **Framework:** UIKit (no SwiftUI)
+- **Platform:** iOS 15.0+
+- **Framework:** UIKit (SwiftUI запрещен)
 - **Language:** Swift 6.0+
-- **AI Library:** WhisperKit 0.14.0+
-- **Architecture:** MVP with delegates
+- **AI Library:** SwiftWhisper 0.14.0+
+- **Architecture:** MVP with delegates (no Combine/closures)
 - **Audio:** AVAudioEngine for real-time capture
-- **Models:** tiny-en (40MB, English-only)
+- **Models:** tiny.en, base.en, small.en (English-only)
+- **Dependencies:** Минимальные - только SwiftWhisper + AVFoundation
 
 ## 🎯 Target Users
 - Users who need real-time speech-to-text conversion
