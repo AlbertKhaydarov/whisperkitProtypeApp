@@ -98,7 +98,7 @@ class YandexGPTManager {
             
             // Если не найдены в системных переменных, пробуем загрузить из .env файла
             if loadedApiKey.isEmpty || loadedFolderID.isEmpty {
-                let envValues = loadFromEnvFile()
+                let envValues = YandexGPTManager.loadFromEnvFile()
                 if loadedApiKey.isEmpty {
                     loadedApiKey = envValues["YANDEX_API_KEY"] ?? ""
                 }
@@ -125,7 +125,7 @@ class YandexGPTManager {
     
     /// Загрузить переменные из .env файла
     /// Load variables from .env file
-    private func loadFromEnvFile() -> [String: String] {
+    private static func loadFromEnvFile() -> [String: String] {
         var envVariables: [String: String] = [:]
         
         // Ищем .env файл в разных местах
@@ -139,8 +139,8 @@ class YandexGPTManager {
         for path in possiblePaths {
             if FileManager.default.fileExists(atPath: path) {
                 do {
-                    let content = try String(contentsOfFile: path)
-                    envVariables = parseEnvContent(content)
+                    let content = try String(contentsOfFile: path, encoding: .utf8)
+                    envVariables = YandexGPTManager.parseEnvContent(content)
                     print("✅ Загружен .env файл из: \(path)")
                     break
                 } catch {
@@ -154,7 +154,7 @@ class YandexGPTManager {
     
     /// Парсить содержимое .env файла
     /// Parse .env file content
-    private func parseEnvContent(_ content: String) -> [String: String] {
+    private static func parseEnvContent(_ content: String) -> [String: String] {
         var envVariables: [String: String] = [:]
         let lines = content.components(separatedBy: .newlines)
         
