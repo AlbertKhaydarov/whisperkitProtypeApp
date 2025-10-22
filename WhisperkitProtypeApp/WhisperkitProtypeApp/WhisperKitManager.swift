@@ -230,6 +230,251 @@ actor WhisperKitManager {
         }
     }
     
+    /// Фильтрация шумовых токенов из текста
+    /// Filter noise tokens from text
+    private func filterNoiseTokens(from text: String) -> String {
+        var filteredText = text
+        
+        // Список шумовых паттернов для удаления
+        let noisePatterns = [
+            // Основные шумовые токены
+            "\\[Music\\]",
+            "\\[music\\]",
+            "\\[MUSIC\\]",
+            "\\[Noise\\]",
+            "\\[noise\\]",
+            "\\[NOISE\\]",
+            "\\[Silence\\]",
+            "\\[silence\\]",
+            "\\[SILENCE\\]",
+            "\\[Breathing\\]",
+            "\\[breathing\\]",
+            "\\[BREATHING\\]",
+            "\\[Sighing\\]",
+            "\\[sighing\\]",
+            "\\[SIGHING\\]",
+            "\\[Whooshing\\]",
+            "\\[whooshing\\]",
+            "\\[WHOOSHING\\]",
+            "\\[Blank Audio\\]",
+            "\\[blank audio\\]",
+            "\\[BLANK AUDIO\\]",
+            "\\[Background Noise\\]",
+            "\\[background noise\\]",
+            "\\[BACKGROUND NOISE\\]",
+            "\\[Static\\]",
+            "\\[static\\]",
+            "\\[STATIC\\]",
+            "\\[Wind\\]",
+            "\\[wind\\]",
+            "\\[WIND\\]",
+            "\\[Audio\\]",
+            "\\[audio\\]",
+            "\\[AUDIO\\]",
+            "\\[Sound\\]",
+            "\\[sound\\]",
+            "\\[SOUND\\]",
+            "\\[Ambient\\]",
+            "\\[ambient\\]",
+            "\\[AMBIENT\\]",
+            "\\[Atmospheric\\]",
+            "\\[atmospheric\\]",
+            "\\[ATMOSPHERIC\\]",
+            "\\[Environmental\\]",
+            "\\[environmental\\]",
+            "\\[ENVIRONMENTAL\\]",
+            "\\[Acoustic\\]",
+            "\\[acoustic\\]",
+            "\\[ACOUSTIC\\]",
+            "\\[Electronic\\]",
+            "\\[electronic\\]",
+            "\\[ELECTRONIC\\]",
+            "\\[Vocal\\]",
+            "\\[vocal\\]",
+            "\\[VOCAL\\]",
+            "\\[Instrument\\]",
+            "\\[instrument\\]",
+            "\\[INSTRUMENT\\]",
+            "\\[Instrumental\\]",
+            "\\[instrumental\\]",
+            "\\[INSTRUMENTAL\\]",
+            "\\[Melody\\]",
+            "\\[melody\\]",
+            "\\[MELODY\\]",
+            "\\[Rhythm\\]",
+            "\\[rhythm\\]",
+            "\\[RHYTHM\\]",
+            "\\[Beat\\]",
+            "\\[beat\\]",
+            "\\[BEAT\\]",
+            "\\[Song\\]",
+            "\\[song\\]",
+            "\\[SONG\\]",
+            "\\[Tune\\]",
+            "\\[tune\\]",
+            "\\[TUNE\\]",
+            
+            // Дополнительные паттерны
+            "\\[Gasp\\]",
+            "\\[gasp\\]",
+            "\\[GASP\\]",
+            "\\(upbeat music\\)",
+            "\\(upbeat Music\\)",
+            "\\(UPBEAT MUSIC\\)",
+            "\\(music\\)",
+            "\\(Music\\)",
+            "\\(MUSIC\\)",
+            "\\(background music\\)",
+            "\\(Background Music\\)",
+            "\\(BACKGROUND MUSIC\\)",
+            "\\(instrumental\\)",
+            "\\(Instrumental\\)",
+            "\\(INSTRUMENTAL\\)",
+            "\\(beat\\)",
+            "\\(Beat\\)",
+            "\\(BEAT\\)",
+            "\\(rhythm\\)",
+            "\\(Rhythm\\)",
+            "\\(RHYTHM\\)",
+            "\\(melody\\)",
+            "\\(Melody\\)",
+            "\\(MELODY\\)",
+            "\\(tune\\)",
+            "\\(Tune\\)",
+            "\\(TUNE\\)",
+            "\\(song\\)",
+            "\\(Song\\)",
+            "\\(SONG\\)",
+            "\\(audio\\)",
+            "\\(Audio\\)",
+            "\\(AUDIO\\)",
+            "\\(sound\\)",
+            "\\(Sound\\)",
+            "\\(SOUND\\)",
+            "\\(noise\\)",
+            "\\(Noise\\)",
+            "\\(NOISE\\)",
+            "\\(silence\\)",
+            "\\(Silence\\)",
+            "\\(SILENCE\\)",
+            "\\(breathing\\)",
+            "\\(Breathing\\)",
+            "\\(BREATHING\\)",
+            "\\(sighing\\)",
+            "\\(Sighing\\)",
+            "\\(SIGHING\\)",
+            "\\(whooshing\\)",
+            "\\(Whooshing\\)",
+            "\\(WHOOSHING\\)",
+            "\\(static\\)",
+            "\\(Static\\)",
+            "\\(STATIC\\)",
+            "\\(wind\\)",
+            "\\(Wind\\)",
+            "\\(WIND\\)",
+            "\\(ambient\\)",
+            "\\(Ambient\\)",
+            "\\(AMBIENT\\)",
+            "\\(atmospheric\\)",
+            "\\(Atmospheric\\)",
+            "\\(ATMOSPHERIC\\)",
+            "\\(environmental\\)",
+            "\\(Environmental\\)",
+            "\\(ENVIRONMENTAL\\)",
+            "\\(acoustic\\)",
+            "\\(Acoustic\\)",
+            "\\(ACOUSTIC\\)",
+            "\\(electronic\\)",
+            "\\(Electronic\\)",
+            "\\(ELECTRONIC\\)",
+            "\\(vocal\\)",
+            "\\(Vocal\\)",
+            "\\(VOCAL\\)",
+            "\\(instrument\\)",
+            "\\(Instrument\\)",
+            "\\(INSTRUMENT\\)"
+        ]
+        
+        // Удаляем каждый паттерн
+        for pattern in noisePatterns {
+            filteredText = filteredText.replacingOccurrences(
+                of: pattern,
+                with: "",
+                options: [.regularExpression, .caseInsensitive]
+            )
+        }
+        
+        // Универсальные паттерны для захвата любых шумовых токенов
+        // Удаляем любые токены в квадратных скобках (кроме обычных слов)
+        filteredText = filteredText.replacingOccurrences(
+            of: "\\[[^\\]]*\\]",
+            with: "",
+            options: .regularExpression
+        )
+        
+        // Удаляем любые токены в круглых скобках, содержащие музыкальные термины
+        let musicTerms = ["music", "beat", "rhythm", "melody", "tune", "song", "audio", "sound", "noise", "silence", "breathing", "sighing", "whooshing", "static", "wind", "ambient", "atmospheric", "environmental", "acoustic", "electronic", "vocal", "instrument", "instrumental", "upbeat", "background"]
+        
+        for term in musicTerms {
+            let pattern = "\\([^)]*\(term)[^)]*\\)"
+            filteredText = filteredText.replacingOccurrences(
+                of: pattern,
+                with: "",
+                options: [.regularExpression, .caseInsensitive]
+            )
+        }
+        
+        // Удаляем множественные пробелы и переносы строк
+        filteredText = filteredText.replacingOccurrences(
+            of: "\\s+",
+            with: " ",
+            options: .regularExpression
+        )
+        
+        // Удаляем пробелы в начале и конце
+        filteredText = filteredText.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // ФИЛЬТРАЦИЯ ПОВТОРЕНИЙ И ГАЛЛЮЦИНАЦИЙ
+        // Удаляем повторяющиеся фразы (более 2 раз подряд)
+        let sentences = filteredText.components(separatedBy: ". ")
+        var uniqueSentences: [String] = []
+        var lastSentence = ""
+        var repeatCount = 0
+        
+        for sentence in sentences {
+            let trimmedSentence = sentence.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmedSentence.isEmpty { continue }
+            
+            if trimmedSentence == lastSentence {
+                repeatCount += 1
+                if repeatCount < 2 {  // Разрешаем максимум 2 повторения
+                    uniqueSentences.append(trimmedSentence)
+                }
+            } else {
+                repeatCount = 0
+                lastSentence = trimmedSentence
+                uniqueSentences.append(trimmedSentence)
+            }
+        }
+        
+        filteredText = uniqueSentences.joined(separator: ". ")
+        
+        // Удаляем очень короткие "предложения" (вероятно галлюцинации)
+        let words = filteredText.components(separatedBy: " ")
+        let filteredWords = words.filter { word in
+            let cleanWord = word.trimmingCharacters(in: .punctuationCharacters)
+            return cleanWord.count >= 3  // Минимум 3 символа
+        }
+        filteredText = filteredWords.joined(separator: " ")
+        
+        // Удаляем изолированные слова (вероятно галлюцинации)
+        if filteredText.components(separatedBy: " ").count == 1 && filteredText.count < 10 {
+            filteredText = ""
+        }
+        
+        return filteredText
+    }
+    
     /// Транскрипция аудио фреймов
     /// Transcribe audio frames
     func transcribe(audioFrames: [Float]) async throws -> [WhisperSegment] {
@@ -279,13 +524,18 @@ actor WhisperKitManager {
             var whisperSegments: [WhisperSegment] = []
             
             if let firstResult = result.first, !firstResult.text.isEmpty {
-                // Создаем один сегмент с полным текстом
-                let segment = WhisperSegment(
-                    text: firstResult.text,
-                    start: 0.0,
-                    end: Double(audioBuffer.count) / 16000.0
-                )
-                whisperSegments = [segment]
+                // Фильтруем шумовые токены из текста
+                let filteredText = filterNoiseTokens(from: firstResult.text)
+                
+                // Создаем сегмент только если остался значимый текст
+                if !filteredText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    let segment = WhisperSegment(
+                        text: filteredText,
+                        start: 0.0,
+                        end: Double(audioBuffer.count) / 16000.0
+                    )
+                    whisperSegments = [segment]
+                }
                 
                 // НЕ очищаем буфер после промежуточных результатов
                 // Буфер будет очищен только при остановке записи
@@ -367,14 +617,20 @@ actor WhisperKitManager {
                 // Сохраняем метрики времени обработки
                 processingTimes.append(processingTime)
                 
-                // Конвертируем результат в наш формат
+                // Конвертируем результат в наш формат с фильтрацией шумов
                 if let firstResult = result.first, !firstResult.text.isEmpty {
-                    let segment = WhisperSegment(
-                        text: firstResult.text,
-                        start: 0.0,
-                        end: Double(audioBuffer.count) / 16000.0
-                    )
-                    finalSegments = [segment]
+                    // Фильтруем шумовые токены из текста
+                    let filteredText = filterNoiseTokens(from: firstResult.text)
+                    
+                    // Создаем сегмент только если остался значимый текст
+                    if !filteredText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        let segment = WhisperSegment(
+                            text: filteredText,
+                            start: 0.0,
+                            end: Double(audioBuffer.count) / 16000.0
+                        )
+                        finalSegments = [segment]
+                    }
                 } else {
                     finalSegments = []
                 }
@@ -549,12 +805,18 @@ actor WhisperKitManager {
             
             for transcriptionResult in result {
                 if !transcriptionResult.text.isEmpty {
-                    let segment = WhisperSegment(
-                        text: transcriptionResult.text,
-                        start: 0.0, // TranscriptionResult не содержит временные метки
-                        end: 0.0
-                    )
-                    whisperSegments.append(segment)
+                    // Фильтруем шумовые токены из текста
+                    let filteredText = filterNoiseTokens(from: transcriptionResult.text)
+                    
+                    // Создаем сегмент только если остался значимый текст
+                    if !filteredText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        let segment = WhisperSegment(
+                            text: filteredText,
+                            start: 0.0, // TranscriptionResult не содержит временные метки
+                            end: 0.0
+                        )
+                        whisperSegments.append(segment)
+                    }
                 }
             }
             
