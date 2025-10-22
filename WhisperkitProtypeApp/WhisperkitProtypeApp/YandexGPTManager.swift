@@ -92,16 +92,91 @@ class YandexGPTManager {
             self.apiKey = apiKey
             self.folderID = folderID
         } else {
-            // Загружаем из переменных окружения
-            self.apiKey = ProcessInfo.processInfo.environment["YANDEX_API_KEY"] ?? ""
-            self.folderID = ProcessInfo.processInfo.environment["YANDEX_FOLDER_ID"] ?? ""
+            // Загружаем из переменных окружения системы
+            var loadedApiKey = ProcessInfo.processInfo.environment["YANDEX_API_KEY"] ?? ""
+            var loadedFolderID = ProcessInfo.processInfo.environment["YANDEX_FOLDER_ID"] ?? ""
+            
+            // Если не найдены в системных переменных, пробуем загрузить из .env файла
+            if loadedApiKey.isEmpty || loadedFolderID.isEmpty {
+                let envValues = loadFromEnvFile()
+                if loadedApiKey.isEmpty {
+                    loadedApiKey = envValues["YANDEX_API_KEY"] ?? ""
+                }
+                if loadedFolderID.isEmpty {
+                    loadedFolderID = envValues["YANDEX_FOLDER_ID"] ?? ""
+                }
+            }
+            
+            self.apiKey = loadedApiKey
+            self.folderID = loadedFolderID
         }
         
         if self.apiKey.isEmpty || self.folderID.isEmpty {
-            print("⚠️ Yandex API ключи не найдены. Установите переменные окружения или создайте .env файл")
+            print("⚠️ Yandex API ключи не найдены. Проверьте:")
+            print("   1. Переменные окружения системы")
+            print("   2. Файл .env в корне проекта")
+            print("   3. Правильность ключей в .env файле")
         } else {
             print("✅ YandexGPTManager инициализирован с API ключами")
+            print("   API Key: \(String(self.apiKey.prefix(8)))...")
+            print("   Folder ID: \(self.folderID)")
         }
+    }
+    
+    /// Загрузить переменные из .env файла
+    /// Load variables from .env file
+    private func loadFromEnvFile() -> [String: String] {
+        var envVariables: [String: String] = [:]
+        
+        // Ищем .env файл в разных местах
+        let possiblePaths = [
+            Bundle.main.bundlePath + "/.env",
+            Bundle.main.bundlePath + "/../.env",
+            Bundle.main.bundlePath + "/../../.env",
+            Bundle.main.path(forResource: ".env", ofType: nil) ?? ""
+        ]
+        
+        for path in possiblePaths {
+            if FileManager.default.fileExists(atPath: path) {
+                do {
+                    let content = try String(contentsOfFile: path)
+                    envVariables = parseEnvContent(content)
+                    print("✅ Загружен .env файл из: \(path)")
+                    break
+                } catch {
+                    print("❌ Ошибка чтения .env файла: \(error.localizedDescription)")
+                }
+            }
+        }
+        
+        return envVariables
+    }
+    
+    /// Парсить содержимое .env файла
+    /// Parse .env file content
+    private func parseEnvContent(_ content: String) -> [String: String] {
+        var envVariables: [String: String] = [:]
+        let lines = content.components(separatedBy: .newlines)
+        
+        for line in lines {
+            let trimmedLine = line.trimmingCharacters(in: .whitespaces)
+            
+            // Пропускаем пустые строки и комментарии
+            guard !trimmedLine.isEmpty && !trimmedLine.hasPrefix("#") else { continue }
+            
+            // Ищем знак равенства
+            guard let equalIndex = trimmedLine.firstIndex(of: "=") else { continue }
+            
+            let key = String(trimmedLine[..<equalIndex]).trimmingCharacters(in: .whitespaces)
+            let value = String(trimmedLine[trimmedLine.index(after: equalIndex)...]).trimmingCharacters(in: .whitespaces)
+            
+            // Убираем кавычки если есть
+            let cleanValue = value.replacingOccurrences(of: "\"", with: "")
+            
+            envVariables[key] = cleanValue
+        }
+        
+        return envVariables
     }
     
     // MARK: - Public Methods
