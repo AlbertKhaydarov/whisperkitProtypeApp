@@ -243,17 +243,8 @@ class TranscriptionViewController: UIViewController {
     }
     
     private func setupGPTManager() {
-        // Получаем API ключи из переменных окружения или Info.plist
-        let apiKey = ProcessInfo.processInfo.environment["YANDEX_API_KEY"] ?? ""
-        let folderID = ProcessInfo.processInfo.environment["YANDEX_FOLDER_ID"] ?? ""
-        
-        if apiKey.isEmpty || folderID.isEmpty {
-            print("⚠️ Yandex API ключи не найдены в переменных окружения")
-            // Можно добавить fallback на Info.plist или показать предупреждение
-        } else {
-            gptManager = YandexGPTManager(apiKey: apiKey, folderID: folderID)
-            print("✅ YandexGPTManager инициализирован")
-        }
+        // Инициализируем YandexGPTManager - он сам загрузит ключи из окружения или .env файла
+        gptManager = YandexGPTManager()
     }
     
     // MARK: - Actions

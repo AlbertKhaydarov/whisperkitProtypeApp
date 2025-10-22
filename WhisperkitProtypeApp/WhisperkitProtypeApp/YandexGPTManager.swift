@@ -16,17 +16,92 @@ class YandexGPTManager {
     private let folderID: String
     private let apiURL = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
     
+    // MARK: - Data Models
+    
+    /// Сообщение для API запроса
+    /// Message for API request
+    struct Message: Codable {
+        let role: String
+        let text: String
+    }
+    
+    /// Запрос на завершение текста
+    /// Completion request
+    struct CompletionRequest: Codable {
+        let modelUri: String
+        let completionOptions: CompletionOptions
+        let messages: [Message]
+    }
+    
+    /// Опции завершения
+    /// Completion options
+    struct CompletionOptions: Codable {
+        let stream: Bool
+        let temperature: Double
+        let maxTokens: String
+    }
+    
+    /// Ответ от API
+    /// API response
+    struct CompletionResponse: Codable {
+        let result: Result
+        
+        struct Result: Codable {
+            let alternatives: [Alternative]
+            let usage: Usage
+            
+            struct Alternative: Codable {
+                let message: Message
+                let status: String
+            }
+            
+            struct Usage: Codable {
+                let inputTextTokens: String
+                let completionTokens: String
+                let totalTokens: String
+            }
+        }
+    }
+    
+    /// Грамматическая ошибка
+    /// Grammar error
+    struct GrammarError: Codable {
+        let errorText: String
+        let correction: String
+        let explanation: String
+    }
+    
+    /// Обратная связь по грамматике
+    /// Grammar feedback
+    struct GrammarFeedback: Codable {
+        let originalText: String
+        let feedback: String
+        let errors: [GrammarError]
+    }
     
     // MARK: - Initialization
     
     /// Инициализация менеджера
     /// Initialize manager
     /// - Parameters:
-    ///   - apiKey: API ключ Yandex
-    ///   - folderID: ID папки в Yandex Cloud
-    init(apiKey: String, folderID: String) {
-        self.apiKey = apiKey
-        self.folderID = folderID
+    ///   - apiKey: API ключ Yandex (опционально, если не указан - будет загружен из окружения)
+    ///   - folderID: ID папки в Yandex Cloud (опционально, если не указан - будет загружен из окружения)
+    init(apiKey: String? = nil, folderID: String? = nil) {
+        // Сначала проверяем переданные параметры
+        if let apiKey = apiKey, let folderID = folderID {
+            self.apiKey = apiKey
+            self.folderID = folderID
+        } else {
+            // Загружаем из переменных окружения
+            self.apiKey = ProcessInfo.processInfo.environment["YANDEX_API_KEY"] ?? ""
+            self.folderID = ProcessInfo.processInfo.environment["YANDEX_FOLDER_ID"] ?? ""
+        }
+        
+        if self.apiKey.isEmpty || self.folderID.isEmpty {
+            print("⚠️ Yandex API ключи не найдены. Установите переменные окружения или создайте .env файл")
+        } else {
+            print("✅ YandexGPTManager инициализирован с API ключами")
+        }
     }
     
     // MARK: - Public Methods

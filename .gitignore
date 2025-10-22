@@ -1,0 +1,58 @@
+# Xcode
+.DS_Store
+*/build/*
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+xcuserdata/
+*.moved-aside
+*.xccheckout
+*.xcscmblueprint
+
+# Environment variables
+.env
+.env.local
+.env.development
+.env.production
+
+# API Keys and sensitive data
+*.pem
+*.key
+*.p12
+*.mobileprovision
+
+# Dependencies
+Pods/
+Carthage/
+
+# Build products
+DerivedData/
+build/
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Swift Package Manager
+.swiftpm/
+Package.resolved
+
+# Temporary files
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
