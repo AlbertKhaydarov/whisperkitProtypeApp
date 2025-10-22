@@ -20,7 +20,7 @@ struct WhisperSegment {
 struct WhisperConfiguration {
     var language: String = "en" // По умолчанию английский
     var translate: Bool = false // Не переводить
-    var modelName: String = "tiny.en" // Модель по умолчанию
+    var modelName: String = "base.en" // Модель по умолчанию (улучшенная)
     var sampleRate: Double = 16000 // Частота дискретизации
     
     // Параметры для улучшения качества распознавания (OpenAI Whisper)
@@ -49,11 +49,18 @@ struct WhisperConfiguration {
     var vadMaxMergeDistance: Float = 0.5 // Максимальное расстояние слияния VAD
     var vadPadding: Float = 0.0 // Отступы VAD
     
+    // Дополнительные параметры для улучшения качества
+    var bestOf: Int = 1 // Количество попыток для выбора лучшего результата
+    var patience: Float = 1.0 // Терпение для ожидания лучшего результата
+    var lengthPenalty: Float = 1.0 // Штраф за длину
+    var repetitionPenalty: Float = 1.0 // Штраф за повторения
+    var noRepeatNgramSize: Int = 0 // Размер n-грамм для предотвращения повторений
+    
     static let defaultConfiguration = WhisperConfiguration()
     
     // Конфигурация для высокого качества
     static let highQualityConfiguration = WhisperConfiguration(
-        modelName: "base.en", // Более точная модель
+        modelName: "base.en", // Еще более точная модель
         temperature: 0.0,
         temperatureFallbackCount: 0,
         compressionRatioThreshold: 2.4,
@@ -73,7 +80,12 @@ struct WhisperConfiguration {
         vadMinSilenceDuration: 0.5,
         vadWindowSize: 0.1,
         vadMaxMergeDistance: 0.5,
-        vadPadding: 0.0
+        vadPadding: 0.0,
+        bestOf: 3, // Больше попыток для лучшего результата
+        patience: 2.0, // Больше терпения
+        lengthPenalty: 1.1, // Небольшой штраф за длину
+        repetitionPenalty: 1.1, // Штраф за повторения
+        noRepeatNgramSize: 3 // Предотвращение повторений 3-грамм
     )
 }
 
@@ -437,6 +449,14 @@ actor WhisperKitManager {
             isInitialized = false
             isWarmedUp = false
             whisperKit = nil
+            
+            // Автоматически переинициализируем с новой конфигурацией
+            do {
+                try await initialize()
+                print("✅ WhisperKit переинициализирован с конфигурацией высокого качества")
+            } catch {
+                print("❌ Ошибка переинициализации WhisperKit: \(error.localizedDescription)")
+            }
         }
     }
     
@@ -452,6 +472,14 @@ actor WhisperKitManager {
             isInitialized = false
             isWarmedUp = false
             whisperKit = nil
+            
+            // Автоматически переинициализируем с новой конфигурацией
+            do {
+                try await initialize()
+                print("✅ WhisperKit переинициализирован со стандартной конфигурацией")
+            } catch {
+                print("❌ Ошибка переинициализации WhisperKit: \(error.localizedDescription)")
+            }
         }
     }
     
