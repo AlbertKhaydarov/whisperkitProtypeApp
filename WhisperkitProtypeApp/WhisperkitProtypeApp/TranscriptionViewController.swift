@@ -79,6 +79,33 @@ class TranscriptionViewController: UIViewController {
         return textView
     }()
     
+    private let analyzeButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.setTitle("📝 Анализ текста", for: .normal)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 15, weight: .medium)
+        button.backgroundColor = .systemGreen
+        button.setTitleColor(.white, for: .normal)
+        button.layer.cornerRadius = 8
+        button.isEnabled = false
+        return button
+    }()
+    
+    private let feedbackTextView: UITextView = {
+        let textView = UITextView()
+        textView.translatesAutoresizingMaskIntoConstraints = false
+        textView.backgroundColor = .systemBackground
+        textView.textColor = .label
+        textView.font = UIFont.systemFont(ofSize: 14)
+        textView.layer.cornerRadius = 8
+        textView.layer.borderWidth = 1
+        textView.layer.borderColor = UIColor.systemGray4.cgColor
+        textView.text = "Результаты анализа появятся здесь..."
+        textView.textAlignment = .left
+        textView.isEditable = false
+        return textView
+    }()
+    
     private let clearButton: UIButton = {
         let button = UIButton(type: .system)
         button.translatesAutoresizingMaskIntoConstraints = false
@@ -93,6 +120,7 @@ class TranscriptionViewController: UIViewController {
     private let presenter: RecognitionPresenter
     private var isInitialized = false
     private var currentStatus: AppStatus = .loading
+    private var gptManager: YandexGPTManager?
     
     // MARK: - Initialization
     init(presenter: RecognitionPresenter = RecognitionPresenter()) {
@@ -110,6 +138,7 @@ class TranscriptionViewController: UIViewController {
         super.viewDidLoad()
         setupUI()
         setupActions()
+        setupGPTManager()
         
         // Синхронизируем выбранную модель с презентером
         let selectedIndex = modelSegmentedControl.selectedSegmentIndex
@@ -142,6 +171,8 @@ class TranscriptionViewController: UIViewController {
         view.addSubview(progressView)
         view.addSubview(startStopButton)
         view.addSubview(resultsTextView)
+        view.addSubview(analyzeButton)
+        view.addSubview(feedbackTextView)
         view.addSubview(clearButton)
         
         // Настраиваем обработчики
@@ -183,7 +214,19 @@ class TranscriptionViewController: UIViewController {
             resultsTextView.topAnchor.constraint(equalTo: startStopButton.bottomAnchor, constant: 30),
             resultsTextView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
             resultsTextView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
-            resultsTextView.bottomAnchor.constraint(equalTo: clearButton.topAnchor, constant: -20),
+            resultsTextView.heightAnchor.constraint(equalToConstant: 120),
+            
+            // Analyze Button
+            analyzeButton.topAnchor.constraint(equalTo: resultsTextView.bottomAnchor, constant: 12),
+            analyzeButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+            analyzeButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+            analyzeButton.heightAnchor.constraint(equalToConstant: 40),
+            
+            // Feedback Text View
+            feedbackTextView.topAnchor.constraint(equalTo: analyzeButton.bottomAnchor, constant: 12),
+            feedbackTextView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+            feedbackTextView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+            feedbackTextView.bottomAnchor.constraint(equalTo: clearButton.topAnchor, constant: -20),
             
             // Clear Button
             clearButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -20),
@@ -195,7 +238,22 @@ class TranscriptionViewController: UIViewController {
     
     private func setupActions() {
         startStopButton.addTarget(self, action: #selector(startStopButtonTapped), for: .touchUpInside)
+        analyzeButton.addTarget(self, action: #selector(analyzeButtonTapped), for: .touchUpInside)
         clearButton.addTarget(self, action: #selector(clearButtonTapped), for: .touchUpInside)
+    }
+    
+    private func setupGPTManager() {
+        // Получаем API ключи из переменных окружения или Info.plist
+        let apiKey = ProcessInfo.processInfo.environment["YANDEX_API_KEY"] ?? ""
+        let folderID = ProcessInfo.processInfo.environment["YANDEX_FOLDER_ID"] ?? ""
+        
+        if apiKey.isEmpty || folderID.isEmpty {
+            print("⚠️ Yandex API ключи не найдены в переменных окружения")
+            // Можно добавить fallback на Info.plist или показать предупреждение
+        } else {
+            gptManager = YandexGPTManager(apiKey: apiKey, folderID: folderID)
+            print("✅ YandexGPTManager инициализирован")
+        }
     }
     
     // MARK: - Actions
@@ -212,10 +270,41 @@ class TranscriptionViewController: UIViewController {
         }
     }
     
+    @objc private func analyzeButtonTapped() {
+        let text = resultsTextView.text ?? ""
+        guard !text.isEmpty, text != "Ваша транскрипция появится здесь..." else { return }
+        
+        statusLabel.text = "Анализ текста..."
+        analyzeButton.isEnabled = false
+        
+        Task {
+            do {
+                guard let gptManager = gptManager else {
+                    throw NSError(domain: "GPTManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "GPT Manager не инициализирован"])
+                }
+                
+                let feedback = try await gptManager.analyzeEnglishText(text)
+                await MainActor.run {
+                    feedbackTextView.text = feedback.feedback
+                    statusLabel.text = "Анализ завершен"
+                    analyzeButton.isEnabled = true
+                }
+            } catch {
+                await MainActor.run {
+                    showError(error)
+                    statusLabel.text = "Ошибка анализа"
+                    analyzeButton.isEnabled = true
+                }
+            }
+        }
+    }
+    
     @objc private func clearButtonTapped() {
         Task {
             await presenter.clearTranscription()
             resultsTextView.text = "Ваша транскрипция появится здесь..."
+            feedbackTextView.text = "Результаты анализа появятся здесь..."
+            analyzeButton.isEnabled = false
             clearButton.isHidden = true
         }
     }
@@ -386,6 +475,10 @@ extension TranscriptionViewController: RecognitionPresenterDelegate {
         DispatchQueue.main.async {
             self.resultsTextView.text = text
             self.clearButton.isHidden = text.isEmpty
+            
+            // Кнопка анализа всегда видна, но активируется только при наличии текста
+            let hasText = !text.isEmpty && text != "Ваша транскрипция появится здесь..."
+            self.analyzeButton.isEnabled = hasText && self.gptManager != nil
         }
     }
     
