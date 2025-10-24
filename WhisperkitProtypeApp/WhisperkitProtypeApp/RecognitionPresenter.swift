@@ -34,11 +34,16 @@ class RecognitionPresenter {
     private let whisperManager: WhisperKitManager
     private let audioManager: AudioRecordingManager
     private let downloadManager: ModelDownloadManager
+    private let qualityManager: WhisperKitQualityManager
     private var currentTranscription = ""
     private var isTranscribing = false
     
     // MARK: - Model Selection
     private var selectedModel: String = "tiny.en" // По умолчанию tiny.en (WhisperKit формат)
+    
+    // MARK: - Quality Management
+    private var isQualityManagerEnabled = false
+    private var currentQualityLevel: QualityLevel = .adaptive
     
     // MARK: - Delegate
     weak var delegate: RecognitionPresenterDelegate?
@@ -47,13 +52,19 @@ class RecognitionPresenter {
     init(
         whisperManager: WhisperKitManager = WhisperKitManager.shared,
         audioManager: AudioRecordingManager = AudioRecordingManager(),
-        downloadManager: ModelDownloadManager = ModelDownloadManager()
+        downloadManager: ModelDownloadManager = ModelDownloadManager(),
+        qualityManager: WhisperKitQualityManager = WhisperKitQualityManager.shared
     ) {
         self.whisperManager = whisperManager
         self.audioManager = audioManager
         self.downloadManager = downloadManager
+        self.qualityManager = qualityManager
         
         setupDelegates()
+        
+        // Quality Manager будет включен через UI переключатель
+        // Автоматическая инициализация отключена для тестирования стандартного режима
+        print("ℹ️ [QUALITY] Quality Manager ready for manual activation via UI")
     }
     
     // MARK: - Public Methods
@@ -201,6 +212,11 @@ class RecognitionPresenter {
             // Очищаем буфер аудио после остановки записи
             await whisperManager.clearAudioBuffer()
             
+            // Очищаем буфер Quality Manager если он активен
+            if isQualityManagerEnabled {
+                await qualityManager.clearAudioBuffer()
+            }
+            
             // Финализируем транскрипцию
             await updateStatus(.processing)
             print("🔄 Финализируем результаты распознавания...")
@@ -248,6 +264,101 @@ class RecognitionPresenter {
     func clearTranscription() async {
         currentTranscription = ""
         await updateTranscription("")
+    }
+    
+    // MARK: - Quality Management Methods
+    
+    /// Включение Quality Manager
+    /// Enable Quality Manager
+    func enableQualityManager() async throws {
+        guard !isQualityManagerEnabled else {
+            print("⚠️ Quality Manager already enabled")
+            return
+        }
+        
+        print("🎯 [QUALITY] Enabling Quality Manager...")
+        
+        do {
+            // Инициализируем Quality Manager с адаптивным выбором
+            try await qualityManager.initialize(qualityLevel: .adaptive)
+            
+            isQualityManagerEnabled = true
+            currentQualityLevel = .adaptive
+            
+            print("✅ [QUALITY] Quality Manager enabled with adaptive selection")
+            
+        } catch {
+            print("❌ [QUALITY] Failed to enable Quality Manager: \(error.localizedDescription)")
+            throw error
+        }
+    }
+    
+    /// Выключение Quality Manager
+    /// Disable Quality Manager
+    func disableQualityManager() async {
+        guard isQualityManagerEnabled else {
+            print("⚠️ Quality Manager already disabled")
+            return
+        }
+        
+        print("🔄 [QUALITY] Disabling Quality Manager...")
+        
+        await qualityManager.reset()
+        isQualityManagerEnabled = false
+        
+        print("✅ [QUALITY] Quality Manager disabled")
+    }
+    
+    /// Переключение уровня качества
+    /// Switch quality level
+    func switchQualityLevel(to level: QualityLevel) async throws {
+        guard isQualityManagerEnabled else {
+            print("⚠️ Quality Manager not enabled")
+            return
+        }
+        
+        print("🔄 [QUALITY] Switching to quality level: \(level.rawValue)")
+        
+        do {
+            try await qualityManager.switchQualityLevel(to: level)
+            currentQualityLevel = level
+            
+            print("✅ [QUALITY] Quality level switched to: \(level.rawValue)")
+            
+        } catch {
+            print("❌ [QUALITY] Failed to switch quality level: \(error.localizedDescription)")
+            throw error
+        }
+    }
+    
+    /// Получение текущего уровня качества
+    /// Get current quality level
+    func getCurrentQualityLevel() -> QualityLevel {
+        return currentQualityLevel
+    }
+    
+    /// Получение доступных уровней качества
+    /// Get available quality levels
+    func getAvailableQualityLevels() -> [QualityLevel] {
+        return QualityLevel.allCases
+    }
+    
+    /// Получение метрик качества
+    /// Get quality metrics
+    func getQualityMetrics() async -> QualityMetrics? {
+        return await qualityManager.getCurrentMetrics()
+    }
+    
+    /// Получение истории метрик
+    /// Get metrics history
+    func getQualityMetricsHistory() async -> [QualityMetrics] {
+        return await qualityManager.getMetricsHistory()
+    }
+    
+    /// Проверка включен ли Quality Manager
+    /// Check if Quality Manager is enabled
+    func isQualityManagerActive() -> Bool {
+        return isQualityManagerEnabled
     }
     
     // MARK: - Private Methods
@@ -407,8 +518,34 @@ extension RecognitionPresenter: AudioRecordingManagerDelegate {
         // Отправляем аудио фреймы в WhisperKit для транскрипции
         Task {
             do {
-                _ = try await whisperManager.transcribe(audioFrames: frames)
+                let isQualityReady = await qualityManager.isReady
+                print("🎤 [STREAM] Processing audio frames: \(frames.count), Quality enabled: \(isQualityManagerEnabled), Quality ready: \(isQualityReady)")
+                
+                if isQualityManagerEnabled && isQualityReady {
+                    // Используем Quality Manager для улучшенной транскрипции
+                    print("🎯 [STREAM] Using Quality Manager for transcription")
+                    let result = try await qualityManager.transcribe(audioArray: frames)
+                    print("🎯 [STREAM] Quality Manager result: '\(result)'")
+                    if !result.isEmpty {
+                        currentTranscription = result
+                        await updateTranscription(result)
+                    }
+                } else {
+                    // Используем стандартный WhisperKit Manager
+                    print("📱 [STREAM] Using standard WhisperKit Manager for transcription")
+                    let segments = try await whisperManager.transcribe(audioFrames: frames)
+                    print("📱 [STREAM] WhisperKit Manager segments: \(segments.count)")
+                    if !segments.isEmpty {
+                        let result = segments.map { $0.text }.joined(separator: " ")
+                        print("📱 [STREAM] WhisperKit Manager result: '\(result)'")
+                        currentTranscription = result
+                        await updateTranscription(result)
+                    } else {
+                        print("⚠️ [STREAM] No segments returned from WhisperKit Manager")
+                    }
+                }
             } catch {
+                print("❌ [STREAM] Transcription error: \(error.localizedDescription)")
                 await handleError(error)
             }
         }
@@ -424,12 +561,21 @@ extension RecognitionPresenter: AudioRecordingManagerDelegate {
         Task {
             print("🎵 Получен файл для транскрипции: \(filePath)")
             
-            // Используем WhisperKitManager для транскрипции файла
             do {
-                let result = try await whisperManager.transcribeFile(audioPath: filePath)
+                let result: String
+                if isQualityManagerEnabled {
+                    // Используем Quality Manager для улучшенной транскрипции файла
+                    print("📊 [QUALITY] Using Quality Manager for file transcription")
+                    result = try await qualityManager.transcribeFile(audioPath: filePath)
+                } else {
+                    // Используем стандартный WhisperKit Manager
+                    print("📱 [STREAM] Using standard WhisperKit Manager for file transcription")
+                    let segments = try await whisperManager.transcribeFile(audioPath: filePath)
+                    result = segments.map { $0.text }.joined(separator: " ")
+                }
                 
-                if let firstResult = result.first, !firstResult.text.isEmpty {
-                    print("🎉 ФАЙЛОВАЯ ТРАНСКРИПЦИЯ: '\(firstResult.text)'")
+                if !result.isEmpty {
+                    print("🎉 ФАЙЛОВАЯ ТРАНСКРИПЦИЯ: '\(result)'")
                     // Файловая транскрипция используется только для отладки, не обновляем UI
                 } else {
                     print("⚠️ Файловая транскрипция вернула пустой результат")

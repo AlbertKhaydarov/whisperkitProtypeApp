@@ -52,6 +52,12 @@ class TranscriptionViewController: UIViewController {
         return control
     }()
     
+    private let qualityControlView: QualityControlView = {
+        let view = QualityControlView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+    
     private let qualityModeButton: UIButton = {
         let button = UIButton(type: .system)
         button.translatesAutoresizingMaskIntoConstraints = false
@@ -156,6 +162,14 @@ class TranscriptionViewController: UIViewController {
             print("🚀 Starting initialization from viewDidAppear...")
             await presenter.initializeTranscription()
             isInitialized = true
+            
+            // Автоматически включаем Quality Manager для тестирования
+            do {
+                try await presenter.enableQualityManager()
+                print("🚀 [AUTO] Quality Manager auto-enabled for testing")
+            } catch {
+                print("⚠️ [AUTO] Failed to auto-enable Quality Manager: \(error.localizedDescription)")
+            }
         }
     }
     
@@ -166,6 +180,7 @@ class TranscriptionViewController: UIViewController {
         
         // Добавляем компоненты на view
         view.addSubview(modelSegmentedControl)
+        view.addSubview(qualityControlView)
         view.addSubview(qualityModeButton)
         view.addSubview(statusLabel)
         view.addSubview(progressView)
@@ -178,6 +193,7 @@ class TranscriptionViewController: UIViewController {
         // Настраиваем обработчики
         modelSegmentedControl.addTarget(self, action: #selector(modelSelectionChanged), for: .valueChanged)
         qualityModeButton.addTarget(self, action: #selector(qualityModeToggled), for: .touchUpInside)
+        qualityControlView.delegate = self
         
         // Настраиваем constraints
         NSLayoutConstraint.activate([
@@ -187,8 +203,13 @@ class TranscriptionViewController: UIViewController {
             modelSegmentedControl.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
             modelSegmentedControl.heightAnchor.constraint(equalToConstant: 32),
             
+            // Quality Control View
+            qualityControlView.topAnchor.constraint(equalTo: modelSegmentedControl.bottomAnchor, constant: 10),
+            qualityControlView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+            qualityControlView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+            
             // Quality Mode Button
-            qualityModeButton.topAnchor.constraint(equalTo: modelSegmentedControl.bottomAnchor, constant: 10),
+            qualityModeButton.topAnchor.constraint(equalTo: qualityControlView.bottomAnchor, constant: 10),
             qualityModeButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
             qualityModeButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
             qualityModeButton.heightAnchor.constraint(equalToConstant: 36),
@@ -476,6 +497,42 @@ extension TranscriptionViewController: RecognitionPresenterDelegate {
     func recognitionPresenter(_ presenter: RecognitionPresenter, didEncounterError error: Error) {
         DispatchQueue.main.async {
             self.showError(error)
+        }
+    }
+}
+
+// MARK: - Quality Control View Delegate
+extension TranscriptionViewController: QualityControlViewDelegate {
+    func qualityControlView(_ view: QualityControlView, didSelectQualityLevel level: QualityLevel) {
+        Task {
+            do {
+                try await presenter.switchQualityLevel(to: level)
+                print("✅ [UI] Quality level switched to: \(level.rawValue)")
+            } catch {
+                await MainActor.run {
+                    self.showError(error)
+                }
+            }
+        }
+    }
+    
+    func qualityControlView(_ view: QualityControlView, didToggleQualityManager enabled: Bool) {
+        Task {
+            if enabled {
+                do {
+                    try await presenter.enableQualityManager()
+                    print("✅ [UI] Quality Manager enabled")
+                } catch {
+                    await MainActor.run {
+                        self.showError(error)
+                        // Сбрасываем состояние кнопки при ошибке
+                        self.qualityControlView.setQualityManagerEnabled(false)
+                    }
+                }
+            } else {
+                await presenter.disableQualityManager()
+                print("✅ [UI] Quality Manager disabled")
+            }
         }
     }
 }
